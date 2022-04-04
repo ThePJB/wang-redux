@@ -5,6 +5,7 @@ mod editor;
 mod level;
 mod application;
 mod game;
+mod ddtest;
 
 // use glow::*;
 // use std::error::Error;
@@ -30,11 +31,10 @@ fn main() {
     let mut mouse_y = 0.0;
     
     event_loop.run(move |event, _, control_flow| {
+        application.handle_event(&event);
         match event {
             Event::LoopDestroyed |
-            Event::WindowEvent {event: WindowEvent::CloseRequested, ..} |
-            Event::WindowEvent {event: WindowEvent::KeyboardInput {
-                input: glutin::event::KeyboardInput { virtual_keycode: Some(glutin::event::VirtualKeyCode::Escape), ..}, ..}, ..}
+            Event::WindowEvent {event: WindowEvent::CloseRequested, ..}
             => {
                 *control_flow = ControlFlow::Exit;
             },

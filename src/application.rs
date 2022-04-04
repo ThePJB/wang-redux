@@ -24,34 +24,24 @@ mouse logic needs to know about level
 is the enum necessary? It constrains things in a pretty nice way making them clean
 even though it will be literally make enum and then do enum lol. But its type checked, functional. Separate decoding from dispatching.
 */
-
-pub enum Scene {
-    Editor(Editor),
-    Game(Game),
+pub enum SceneOutcome {
+    Push(Box<dyn Scene>),
+    Pop(SceneSignal),
+    None,
 }
 
-impl Scene {
-    pub fn handle_keypress(&mut self, event: glutin::event::KeyboardInput) {
-        match self {
-            Scene::Editor(editor) => {
+pub enum SceneSignal {
+    JustPop,
+    Colour(Vec3),
+    Amount(i32),
+    Dimensions(i32, i32),
+    // eg level success
+}
 
-            },
-            Scene::Game(game) => {
-
-            },
-        }
-    }
-
-    pub fn handle_mouse_click(&mut self, button: glutin::event::MouseButton, state: glutin::event::ElementState, x: f32, y: f32) {
-        match self {
-            Scene::Editor(editor) => {
-
-            },
-            Scene::Game(game) => {
-
-            },
-        }
-    }
+pub trait Scene {
+    fn handle_event(&mut self, event: &glutin::event::Event<()>) -> SceneOutcome;
+    fn handle_signal(&mut self, signal: SceneSignal) -> SceneOutcome;
+    fn draw(&self, gl: &glow::Context, r: &mut Renderer);
 }
 
 // boilerplate & scene mgmt
@@ -67,7 +57,7 @@ pub struct Application {
     pub xres: f32,
     pub yres: f32,
     
-    scene_stack: Vec<Scene>,
+    scene_stack: Vec<Box<dyn Scene>>,
 
 }
 
@@ -85,6 +75,9 @@ impl Application {
 
         unsafe { gl.use_program(Some(shader_program)); }
 
+        let mut scene_stack: Vec<Box<dyn Scene>> = Vec::new();
+        scene_stack.push(Box::new(Editor::new()));
+
         Application {
             gl,
             window,
@@ -96,8 +89,29 @@ impl Application {
             xres: default_xres,
             yres: default_yres,
 
-            scene_stack: vec![Scene::Editor(Editor::new())],
+            scene_stack,
         }
+    }
+
+    pub fn handle_scene_outcome(&mut self, so: SceneOutcome) {
+        match so {
+            SceneOutcome::Push(scene) => {
+                self.scene_stack.push(scene);
+            },
+            SceneOutcome::Pop(signal) => {
+                self.scene_stack.pop();
+                let stack_idx = self.scene_stack.len() - 1;
+                let so = self.scene_stack[stack_idx].handle_signal(signal);
+                self.handle_scene_outcome(so);
+            },
+            SceneOutcome::None => {},
+        }
+    }
+
+    pub fn handle_event(&mut self, event: &glutin::event::Event<()>) {
+        let stack_idx = self.scene_stack.len()-1; 
+        let so = self.scene_stack[stack_idx].handle_event(&event);
+        self.handle_scene_outcome(so);
     }
 
     pub fn resize(&mut self, new_xres: f32, new_yres: f32) {
@@ -116,20 +130,18 @@ impl Application {
         self.renderer.clear();
         self.renderer.top_left = Vec2::new(0.0, 0.0);
         self.renderer.bot_right = Vec2::new(self.xres/self.yres, 1.0);
+        
+        let screen_rect = Rect::new(0.0, 0.0, self.xres/self.yres, 1.0);
 
-        match &self.scene_stack[self.scene_stack.len()-1] {
-            Scene::Editor(editor) => {
-                let screen_rect = Rect::new(0.0, 0.0, self.xres/self.yres, 1.0);
-                let level_rect = screen_rect.fit_center_square();
-                self.renderer.draw_rect(screen_rect, Vec3::new(0.0, 1.0, 0.0), 1.0); // y not red lmao
-                editor.level.draw(&mut self.renderer, level_rect);
-                // self.renderer.draw_rect(level_rect, Vec3::new(1.0, 0.0, 0.0), 2.0); // y not red lmao
-            }
-            Scene::Game(game) => {
-                let level_rect = Rect::new_centered(0.5, 0.5, 1.0, 1.0);
-                game.level.draw(&mut self.renderer, level_rect);
-            }
-        }
+        self.scene_stack[self.scene_stack.len()-1].draw(&self.gl, &mut self.renderer);
+        // match & {
+        //     Scene::Editor(editor) => {editor.draw(&mut self.renderer, screen_rect)},
+        //     Scene::Game(game) => {
+        //         let level_rect = Rect::new_centered(0.5, 0.5, 1.0, 1.0);
+        //         game.level.draw(&mut self.renderer, level_rect);
+        //     }
+        //     _ => {},
+        // }
 
         self.renderer.present(&self.gl);
         self.window.swap_buffers().unwrap();

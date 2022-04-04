@@ -1,6 +1,8 @@
 use crate::kmath::*;
 use crate::renderer::*;
 use crate::rect::*;
+
+#[derive(Clone)]
 pub struct Level {
     tiles: Vec<Vec3>,
     w: i32,
@@ -52,9 +54,10 @@ impl Level {
     }
 
     pub fn draw(&self, renderer: &mut Renderer, rect: Rect) {
+        renderer.draw_rect(rect, Vec3::new(0.2, 0.2, 0.2), 50.0);
         for i in 0..self.w {
             for j in 0..self.h {
-                renderer.draw_rect(rect.grid_child(i, j, self.w, self.h), self.get_tile(i, j), 100.0)
+                renderer.draw_rect(rect.dilate(-0.003).grid_child(i, j, self.w, self.h).dilate(-0.003), self.get_tile(i, j), 100.0)
             }
         }
     }
