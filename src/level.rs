@@ -5,8 +5,8 @@ use crate::rect::*;
 #[derive(Clone)]
 pub struct Level {
     tiles: Vec<Vec3>,
-    w: i32,
-    h: i32,
+    pub w: i32,
+    pub h: i32,
 
     tape: Vec<Vec3>,
     player: (i32, i32),
@@ -38,14 +38,20 @@ impl Level {
             panic!("get tile out of bounds");
         }
 
-        self.tiles[(x * self.w + y) as usize]
+        self.tiles[(x * self.h + y) as usize]
     }
 
     pub fn resize(&mut self, new_w: i32, new_h: i32) {
+        if new_w < 1 || new_h < 1 {
+            return;
+        }
+
         let mut new_tiles = vec![Vec3::new(0.0, 0.0, 0.0); (new_w*new_h) as usize];
         for i in 0..new_w.min(self.w) {
             for j in 0..new_h.min(self.h) {
-                new_tiles[(i*new_w + j) as usize] = self.tiles[(i*self.w + j) as usize];
+                let old_tile = self.tiles[(i*self.h + j) as usize];
+                let idx = (i*new_h + j) as usize;
+                new_tiles[idx] = old_tile;
             }
         }
         self.w = new_w;
@@ -53,11 +59,11 @@ impl Level {
         self.tiles = new_tiles;
     }
 
-    pub fn draw(&self, renderer: &mut Renderer, rect: Rect) {
-        renderer.draw_rect(rect, Vec3::new(0.2, 0.2, 0.2), 50.0);
+    pub fn draw(&self, buf: &mut TriangleBuffer, rect: Rect) {
+        buf.draw_rect(rect, Vec3::new(0.2, 0.2, 0.2), 2.0);
         for i in 0..self.w {
             for j in 0..self.h {
-                renderer.draw_rect(rect.dilate(-0.003).grid_child(i, j, self.w, self.h).dilate(-0.003), self.get_tile(i, j), 100.0)
+                buf.draw_rect(rect.dilate(-0.005).grid_child(i, j, self.w, self.h).dilate(-0.005), self.get_tile(i, j), 100.0)
             }
         }
     }

@@ -8,22 +8,18 @@ mod game;
 mod colour_picker;
 mod ddtest;
 
-// use glow::*;
-// use std::error::Error;
-// use kmath::*;
-// use renderer::*;
-// use rect::*;
-// use std::collections::HashSet;
-// use std::time::{Duration, SystemTime};
 
 use application::*;
 use glutin::event::{Event, WindowEvent};
 use glutin::event_loop::ControlFlow;
+use std::env;
 
 
 
 
 fn main() {
+    env::set_var("RUST_BACKTRACE", "1");
+    
     let event_loop = glutin::event_loop::EventLoop::new();
     let mut application = Application::new(&event_loop);
     
@@ -65,6 +61,9 @@ fn main() {
                 WindowEvent::MouseInput { state, button, .. } => {
 
                 },
+                WindowEvent::Resized(physical_size) => {
+                    application.resize(physical_size.width as f32, physical_size.height as f32);
+                }
                 _ => (),
             }
             _ => (),

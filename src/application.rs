@@ -39,20 +39,23 @@ pub enum SceneSignal {
 }
 
 pub trait Scene {
-    fn handle_event(&mut self, event: &glutin::event::Event<()>) -> SceneOutcome;
+    fn handle_event(&mut self, event: &glutin::event::Event<()>, screen_rect: Rect, cursor_pos: Vec2) -> SceneOutcome;
     fn handle_signal(&mut self, signal: SceneSignal) -> SceneOutcome;
-    fn draw(&self, gl: &glow::Context, r: &mut Renderer, egui: &mut egui_glow::EguiGlow, window: &winit::window::Window);
+    fn draw(&self, screen_rect: Rect) -> TriangleBuffer;
 }
+
+
 
 // boilerplate & scene mgmt
 pub struct Application {
     gl: glow::Context,
     window: glutin::WindowedContext<glutin::PossiblyCurrent>,
-    egui: egui_glow::EguiGlow,
 
     renderer: Renderer,
 
     shader_program: glow::Program,
+
+    cursor_pos: Vec2,
 
     pub xres: f32,
     pub yres: f32,
@@ -67,7 +70,6 @@ impl Application {
         let default_yres = 900.0;
 
         let (gl, window) = unsafe { opengl_boilerplate(default_xres, default_yres, event_loop) };
-        let egui_glow = egui_glow::EguiGlow::new(&window, &gl);
 
         let renderer = Renderer::new(&gl, default_xres/default_yres);
 
@@ -81,13 +83,13 @@ impl Application {
         Application {
             gl,
             window,
-            egui: egui_glow,
             renderer,
 
             shader_program,
 
             xres: default_xres,
             yres: default_yres,
+            cursor_pos: Vec2::new(0.0, 0.0),
 
             scene_stack,
         }
@@ -109,8 +111,16 @@ impl Application {
     }
 
     pub fn handle_event(&mut self, event: &glutin::event::Event<()>) {
+        match event {
+            glutin::event::Event::WindowEvent {event: glutin::event::WindowEvent::CursorMoved {position: pos, ..}, ..} => {
+                self.cursor_pos = Vec2::new(pos.x as f32 / self.yres, pos.y as f32 / self.yres); // div yres both times because aspect ratio
+            },
+            _ => {},
+        }
+
         let stack_idx = self.scene_stack.len()-1; 
-        let so = self.scene_stack[stack_idx].handle_event(&event);
+        let screen_rect = self.screen_rect();
+        let so = self.scene_stack[stack_idx].handle_event(&event, screen_rect, self.cursor_pos);
         self.handle_scene_outcome(so);
     }
 
@@ -124,35 +134,20 @@ impl Application {
         // renderer resize
     }
 
+    fn screen_rect(&self) -> Rect {
+        Rect::new(0.0, 0.0, self.xres / self.yres, 1.0)
+    }
+
     pub fn draw(&mut self) {
         unsafe { self.gl.clear(glow::COLOR_BUFFER_BIT | glow::DEPTH_BUFFER_BIT); } 
-        
-        self.renderer.clear();
-        self.renderer.top_left = Vec2::new(0.0, 0.0);
-        self.renderer.bot_right = Vec2::new(self.xres/self.yres, 1.0);
-        
-        let screen_rect = Rect::new(0.0, 0.0, self.xres/self.yres, 1.0);
 
-        self.scene_stack[self.scene_stack.len()-1].draw(&self.gl, &mut self.renderer, &mut self.egui, &self.window.window());
-        // match & {
-        //     Scene::Editor(editor) => {editor.draw(&mut self.renderer, screen_rect)},
-        //     Scene::Game(game) => {
-        //         let level_rect = Rect::new_centered(0.5, 0.5, 1.0, 1.0);
-        //         game.level.draw(&mut self.renderer, level_rect);
-        //     }
-        //     _ => {},
-        // }
-
-        self.renderer.present(&self.gl);
+        let tris = self.scene_stack[self.scene_stack.len()-1].draw(self.screen_rect());
+        self.renderer.present(&self.gl, tris);
         self.window.swap_buffers().unwrap();
     }
 
     pub fn destroy(&mut self) {
         self.renderer.destroy(&self.gl);
-    }
-
-    pub fn egui_event(&mut self, event: &glutin::event::WindowEvent) {
-        self.egui.on_event(event);
     }
 }
 

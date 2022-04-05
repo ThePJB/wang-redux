@@ -59,4 +59,8 @@ impl Rect {
     pub fn bot(self) -> f32 {
         self.y + self.h
     }
+    pub fn contains(self, point: Vec2) -> bool {
+        self.x < point.x && self.x + self.w > point.x &&
+        self.y < point.y && self.y + self.h > point.y
+    }
 }

@@ -53,3 +53,38 @@ Vec<button>: Button {rect, editorCommand, rollover, selected, texture/colour, ho
 
 fn gui -> Vec<button>
 fn clickButtons?(Vec<button>) -> command
+
+------
+todo rip out egui
+todo simplify drawing
+todo put in buttons and stuff
+
+OR move drawing into handle event, and supply relevant context to handle event.
+
+
+encapsulation: for shit thats fucked where you can lose flexibility or afford to keep punching holes
+the price of encapsulation: it doesnt actually do anything
+for dealing with other people's code
+
+programming: ultimate mindset test
+-----------------
+
+Done: egui gone, drawing simplified
+Doing: UI buttons
+
+function that generates Vec<button> from screen rect
+
+fuckin maybe a scene graph is good. Because what about clicking in my level.
+
+
+------------
+Lesson learned: 
+2d indexing: x*h or y*w
+dont get frustrated its an unknown unknown
+
+
+
+functionality: 
+    clicking on level
+    button textures / letters
+    snowkoban text.png

@@ -29,7 +29,7 @@ impl Game {
 }
 
 impl Scene for Game {
-    fn handle_event(&mut self, event: &glutin::event::Event<()>) -> SceneOutcome {
+    fn handle_event(&mut self, event: &glutin::event::Event<()>, screen_rect: Rect, cursor_pos: Vec2) -> SceneOutcome {
         let mut key_cmd_schema = HashMap::new();
         key_cmd_schema.insert(glutin::event::VirtualKeyCode::Escape, GameCommand::Quit);
 
@@ -57,7 +57,9 @@ impl Scene for Game {
         SceneOutcome::None
     }
 
-    fn draw(&self, gl: &glow::Context, r: &mut Renderer, egui: &mut egui_glow::EguiGlow, window: &winit::window::Window) {
-        r.draw_rect(Rect::new(0.25, 0.25, 0.5, 0.5), Vec3::new(1.0, 0.0, 0.0), 1.0);
+    fn draw(&self, screen_rect: Rect) -> TriangleBuffer {
+        let mut buf = TriangleBuffer::new(screen_rect);
+        buf.draw_rect(Rect::new(0.25, 0.25, 0.5, 0.5), Vec3::new(1.0, 0.0, 0.0), 1.0);
+        buf
     }
 }
