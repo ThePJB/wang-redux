@@ -22,3 +22,34 @@ fn handle_signal(&mut self, signal S) -> SceneOutcome
 -----
 
 ok i want to drop into an editor, press space to go in game, press escape to go back to editor
+
+-----
+
+ok add colour picker
+
+get mouse clicks
+then sort out the egui-glow
+
+-------
+
+I would really like to just return a buffer from draw
+
+slotting in egui is hectic, if i have it in draw draw needs to be &mut self
+and also needs to return SceneOutcome
+
+its not parsimonious with my current interface
+
+I suppose event handling will need to know window dimensions for mouse stuff
+
+im kind of against encapsulation. CoI hey.
+
+maybe something retained mode would fit better
+
+I could do without egui
+
+draw(rect) -> Vec<float>, now thats a nice interface
+editor interface can have easily a bunch of buttons. Define them once for both drawing and click detection.
+Vec<button>: Button {rect, editorCommand, rollover, selected, texture/colour, hotkey, ..}
+
+fn gui -> Vec<button>
+fn clickButtons?(Vec<button>) -> command

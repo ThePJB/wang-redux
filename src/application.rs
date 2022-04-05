@@ -41,7 +41,7 @@ pub enum SceneSignal {
 pub trait Scene {
     fn handle_event(&mut self, event: &glutin::event::Event<()>) -> SceneOutcome;
     fn handle_signal(&mut self, signal: SceneSignal) -> SceneOutcome;
-    fn draw(&self, gl: &glow::Context, r: &mut Renderer);
+    fn draw(&self, gl: &glow::Context, r: &mut Renderer, egui: &mut egui_glow::EguiGlow, window: &winit::window::Window);
 }
 
 // boilerplate & scene mgmt
@@ -133,7 +133,7 @@ impl Application {
         
         let screen_rect = Rect::new(0.0, 0.0, self.xres/self.yres, 1.0);
 
-        self.scene_stack[self.scene_stack.len()-1].draw(&self.gl, &mut self.renderer);
+        self.scene_stack[self.scene_stack.len()-1].draw(&self.gl, &mut self.renderer, &mut self.egui, &self.window.window());
         // match & {
         //     Scene::Editor(editor) => {editor.draw(&mut self.renderer, screen_rect)},
         //     Scene::Game(game) => {

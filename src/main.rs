@@ -5,6 +5,7 @@ mod editor;
 mod level;
 mod application;
 mod game;
+mod colour_picker;
 mod ddtest;
 
 // use glow::*;

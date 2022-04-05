@@ -57,7 +57,7 @@ impl Scene for Game {
         SceneOutcome::None
     }
 
-    fn draw(&self, gl: &glow::Context, r: &mut Renderer) {
+    fn draw(&self, gl: &glow::Context, r: &mut Renderer, egui: &mut egui_glow::EguiGlow, window: &winit::window::Window) {
         r.draw_rect(Rect::new(0.25, 0.25, 0.5, 0.5), Vec3::new(1.0, 0.0, 0.0), 1.0);
     }
 }

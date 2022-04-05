@@ -4,6 +4,7 @@ use crate::renderer::*;
 use crate::rect::*;
 use crate::application::*;
 use crate::game::*;
+use crate::colour_picker::*;
 
 use std::collections::HashMap;
 // use glow::event::Event;
@@ -17,6 +18,7 @@ impl Scene for Editor {
     fn handle_event(&mut self, event: &glutin::event::Event<()>) -> SceneOutcome {
         let mut key_cmd_schema = HashMap::new();
         key_cmd_schema.insert(glutin::event::VirtualKeyCode::Space, EditorCommand::PlayLevel);
+        key_cmd_schema.insert(glutin::event::VirtualKeyCode::C, EditorCommand::OpenColourPicker);
 
         let command = match event {
             glutin::event::Event::WindowEvent {event: glutin::event::WindowEvent::KeyboardInput {
@@ -45,7 +47,7 @@ impl Scene for Editor {
             _ => {SceneOutcome::None},
         }
     }
-    fn draw(&self, gl: &glow::Context, r: &mut Renderer) {
+    fn draw(&self, gl: &glow::Context, r: &mut Renderer, egui: &mut egui_glow::EguiGlow, window: &winit::window::Window) {
         self.draw(r, Rect::new(0.0, 0.0, 1.0, 1.0));
     }
 }
@@ -68,6 +70,7 @@ impl Editor {
 
     pub fn handle_command(&mut self, command: EditorCommand) -> SceneOutcome {
         match command {
+            EditorCommand::OpenColourPicker => {return SceneOutcome::Push(Box::new(ColourPicker{}))},
             EditorCommand::SetCursor(state) => {self.cursor_state = state},
             EditorCommand::Curse(x, y) => {
                 match self.cursor_state {
@@ -113,6 +116,8 @@ pub enum EditorCommand {
     Curse(i32, i32),
 
     Resize(i32, i32),
+
+    OpenColourPicker,
 
     SetColour(Vec3),
     
