@@ -1,6 +1,7 @@
 use crate::level::*;
 use crate::kmath::*;
 use crate::renderer::*;
+use crate::rendererUV::*;
 use crate::rect::*;
 use crate::application::*;
 use crate::game::*;
@@ -55,11 +56,13 @@ pub struct Button {
 
 pub enum ButtonAppearance {
     Colour(Vec3),
+    Texture(i32),
 }
 
 pub struct Editor {
     pub cursor_state: CursorState,
     pub level: Level,
+    pub powerup_amount: i32,
 }
 
 impl Scene for Editor {
@@ -81,7 +84,19 @@ impl Scene for Editor {
                 },
 
                 MouseInput { button: glutin::event::MouseButton::Left, state: glutin::event::ElementState::Pressed, ..} => {
-                    buttons.iter().filter(|b| b.rect.contains(cursor_pos)).map(|b| b.command).nth(0)
+                    let gui_button_cmd = buttons.iter().filter(|b| b.rect.contains(cursor_pos)).map(|b| b.command).nth(0);
+                    if gui_button_cmd.is_some() {
+                        gui_button_cmd
+                    } else {
+                        let level_rect = screen_rect.fit_center_square();
+                        if level_rect.contains(cursor_pos) {
+                            println!("{:?}", level_rect.relative_point(cursor_pos));
+                            let (x, y) = level_rect.grid_square(level_rect.relative_point(cursor_pos), self.level.w, self.level.h);
+                            Some(EditorCommand::Curse(x, y))
+                        } else {
+                            None
+                        }
+                    }
                 },
                 _ => None,
             },
@@ -103,11 +118,13 @@ impl Scene for Editor {
         }
     }
 
-    fn draw(&self, screen_rect: Rect) -> TriangleBuffer {
+    fn draw(&self, screen_rect: Rect) -> (Option<TriangleBuffer>, Option<TriangleBufferUV>) {
         let mut buf = TriangleBuffer::new(screen_rect);
+        let mut buf_uv = TriangleBufferUV::new(screen_rect, 20, 20);
+
         buf.draw_rect(screen_rect.child(0.0, 0.0, 1.0, 1.0), Vec3::new(0.9, 0.1, 0.9), 1.0);
         let level_rect = screen_rect.fit_center_square();
-        self.level.draw(&mut buf, level_rect);
+        self.level.draw(&mut buf, &mut buf_uv, level_rect);
 
         let buttons = self.buttons(screen_rect);
 
@@ -117,10 +134,11 @@ impl Scene for Editor {
             buf.draw_rect(button.rect.child(0.0, 0.97, 1.0, 0.03), Vec3::new(0.1, 0.1, 0.1), 3.0);
             match button.appearance {
                 ButtonAppearance::Colour(colour) => buf.draw_rect(button.rect.dilate(-0.01), colour, 4.0),
+                ButtonAppearance::Texture(idx) => {buf_uv.draw_sprite(button.rect.fit_center_square(), idx, 5.0)},
             }
         }
 
-        buf
+        (Some(buf), Some(buf_uv))
     }
 }
 
@@ -129,6 +147,7 @@ impl Editor {
         Editor {
             cursor_state: CursorState::ColourPlacer(Vec3::new(1.0, 0.0, 0.0)),
             level: Level::new(6,6),
+            powerup_amount: 3,
         }
     }
 
@@ -144,11 +163,11 @@ impl Editor {
         buttons.push(Button {rect: lpane.grid_child(1, 0, 2, 7).dilate(-0.01), command: EditorCommand::SaveLevel, hotkey: VirtualKeyCode::S, appearance: ButtonAppearance::Colour(Vec3::new(0.0, 0.0, 0.0))});
         buttons.push(Button {rect: lpane.grid_child(1, 1, 2, 7).dilate(-0.01), command: EditorCommand::LoadLevel, hotkey: VirtualKeyCode::L, appearance: ButtonAppearance::Colour(Vec3::new(0.0, 0.0, 0.0))});
 
-        buttons.push(Button {rect: lpane.grid_child(0, 2, 2, 7).dilate(-0.01), command: EditorCommand::SetCursor(CursorState::PlacePlayer), hotkey: VirtualKeyCode::P, appearance: ButtonAppearance::Colour(Vec3::new(0.0, 0.0, 0.0))});
-        buttons.push(Button {rect: lpane.grid_child(1, 2, 2, 7).dilate(-0.01), command: EditorCommand::SetCursor(CursorState::PlaceGoal), hotkey: VirtualKeyCode::G, appearance: ButtonAppearance::Colour(Vec3::new(0.0, 0.0, 0.0))});
+        buttons.push(Button {rect: lpane.grid_child(0, 2, 2, 7).dilate(-0.01), command: EditorCommand::SetCursor(CursorState::PlacePlayer), hotkey: VirtualKeyCode::P, appearance: ButtonAppearance::Texture(0)});
+        buttons.push(Button {rect: lpane.grid_child(1, 2, 2, 7).dilate(-0.01), command: EditorCommand::SetCursor(CursorState::PlaceGoal), hotkey: VirtualKeyCode::G, appearance: ButtonAppearance::Texture(2)});
         buttons.push(Button {rect: lpane.grid_child(0, 3, 2, 7).dilate(-0.01), command: EditorCommand::PowerupInc, hotkey: VirtualKeyCode::LBracket, appearance: ButtonAppearance::Colour(Vec3::new(0.0, 0.0, 0.0))});
         buttons.push(Button {rect: lpane.grid_child(1, 3, 2, 7).dilate(-0.01), command: EditorCommand::PowerupDec, hotkey: VirtualKeyCode::RBracket, appearance: ButtonAppearance::Colour(Vec3::new(0.0, 0.0, 0.0))});
-        buttons.push(Button {rect: lpane.grid_child(0, 4, 2, 7).dilate(-0.01), command: EditorCommand::SetCursor(CursorState::PlacePowerup), hotkey: VirtualKeyCode::U, appearance: ButtonAppearance::Colour(Vec3::new(0.0, 0.0, 0.0))});
+        buttons.push(Button {rect: lpane.grid_child(0, 4, 2, 7).dilate(-0.01), command: EditorCommand::SetCursor(CursorState::PlacePowerup), hotkey: VirtualKeyCode::U, appearance: ButtonAppearance::Texture(1)});
         buttons.push(Button {rect: lpane.grid_child(1, 4, 2, 7).dilate(-0.01), command: EditorCommand::SetCursor(CursorState::ClearEntity), hotkey: VirtualKeyCode::D, appearance: ButtonAppearance::Colour(Vec3::new(0.0, 0.0, 0.0))});
         
         buttons.push(Button {rect: lpane.grid_child(0, 5, 2, 7).dilate(-0.01), command: EditorCommand::Resize(1, 0), hotkey: VirtualKeyCode::F24, appearance: ButtonAppearance::Colour(Vec3::new(0.0, 0.0, 0.0))});
@@ -184,16 +203,19 @@ impl Editor {
     pub fn handle_command(&mut self, command: EditorCommand) -> SceneOutcome {
         println!("Editor Command: {:?}", command);
         match command {
-            EditorCommand::PowerupInc => {},
-            EditorCommand::PowerupDec => {},
+            EditorCommand::PowerupInc => {self.powerup_amount += 1},
+            EditorCommand::PowerupDec => {self.powerup_amount -= 1},
             EditorCommand::SetCursor(state) => {self.cursor_state = state},
             EditorCommand::Curse(x, y) => {
                 match self.cursor_state {
                     CursorState::ColourPlacer(colour) => {self.level.set_tile(x, y, colour)},
-                    CursorState::PlacePlayer => {},
-                    CursorState::PlacePowerup => {},
-                    CursorState::PlaceGoal => {},
-                    CursorState::ClearEntity => {},
+                    CursorState::PlacePlayer => {self.level.player = (x, y)},
+                    CursorState::PlacePowerup => {
+                        self.level.powerups.retain(|(px, py, n)| x != *px || y != *py);
+                        self.level.powerups.push((x, y, self.powerup_amount));
+                    },
+                    CursorState::PlaceGoal => {self.level.goal = (x, y)},
+                    CursorState::ClearEntity => {self.level.powerups.retain(|(px, py, n)| x != *px || y != *py)},
                 }
             },
             EditorCommand::Resize(w, h) => {self.level.resize(self.level.w + w, self.level.h + h)},

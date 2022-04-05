@@ -33,7 +33,7 @@ impl Rect {
     }
     pub fn fit_center_square(&self) -> Rect {
         let s = self.w.min(self.h);
-        Rect::new_centered(self.w / 2.0, self.h / 2.0, s, s)
+        Rect::new_centered(self.x + self.w / 2.0, self.y + self.h / 2.0, s, s)
     }
     pub fn centroid(&self) -> Vec2 {
         Vec2::new(self.x + self.w/2.0, self.y + self.h/2.0)
@@ -59,8 +59,26 @@ impl Rect {
     pub fn bot(self) -> f32 {
         self.y + self.h
     }
+    pub fn tl(self) -> Vec2 {
+        Vec2::new(self.x, self.y)
+    }
+    pub fn tr(self) -> Vec2 {
+        Vec2::new(self.x + self.w, self.y)
+    }
+    pub fn bl(self) -> Vec2 {
+        Vec2::new(self.x, self.y + self.h)
+    }
+    pub fn br(self) -> Vec2 {
+        Vec2::new(self.x + self.w, self.y + self.h)
+    }
     pub fn contains(self, point: Vec2) -> bool {
         self.x < point.x && self.x + self.w > point.x &&
         self.y < point.y && self.y + self.h > point.y
+    }
+    pub fn relative_point(self, point: Vec2) -> Vec2 {
+        Vec2::new((point.x - self.x) / self.w, (point.y - self.y) / self.h)
+    }
+    pub fn grid_square(self, point: Vec2, w: i32, h: i32) -> (i32, i32) {
+        ((w as f32 * point.x) as i32, (h as f32 * point.y) as i32)
     }
 }

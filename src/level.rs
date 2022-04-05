@@ -1,5 +1,6 @@
 use crate::kmath::*;
 use crate::renderer::*;
+use crate::rendererUV::*;
 use crate::rect::*;
 
 #[derive(Clone)]
@@ -8,9 +9,10 @@ pub struct Level {
     pub w: i32,
     pub h: i32,
 
-    tape: Vec<Vec3>,
-    player: (i32, i32),
-    powerups: Vec<(i32, i32, i32)>,
+    pub tape: Vec<Vec3>,
+    pub player: (i32, i32),
+    pub goal: (i32, i32),
+    pub powerups: Vec<(i32, i32, i32)>,
 }
 
 impl Level {
@@ -21,6 +23,7 @@ impl Level {
             tiles: vec![Vec3::new(0.0, 0.0, 0.0);( w*h) as usize],
             tape: vec![Vec3::new(1.0, 0.0, 0.0)],
             player: (0,0),
+            goal: (0,0),
             powerups: vec![],
         }
     }
@@ -59,12 +62,17 @@ impl Level {
         self.tiles = new_tiles;
     }
 
-    pub fn draw(&self, buf: &mut TriangleBuffer, rect: Rect) {
+    pub fn draw(&self, buf: &mut TriangleBuffer, buf_uv: &mut TriangleBufferUV, rect: Rect) {
         buf.draw_rect(rect, Vec3::new(0.2, 0.2, 0.2), 2.0);
         for i in 0..self.w {
             for j in 0..self.h {
                 buf.draw_rect(rect.dilate(-0.005).grid_child(i, j, self.w, self.h).dilate(-0.005), self.get_tile(i, j), 100.0)
             }
+        }
+        buf_uv.draw_sprite(rect.grid_child(self.player.0, self.player.1, self.w, self.h), 0, 200.0);
+        buf_uv.draw_sprite(rect.grid_child(self.goal.0, self.goal.1, self.w, self.h), 2, 200.0);
+        for powerup in self.powerups.iter() {
+            buf_uv.draw_sprite(rect.grid_child(powerup.0, powerup.1, self.w, self.h), 1, 200.0);
         }
     }
 }

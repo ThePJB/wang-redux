@@ -1,6 +1,7 @@
 use crate::level::*;
 use crate::application::*;
 use crate::renderer::*;
+use crate::rendererUV::*;
 use crate::rect::*;
 use crate::kmath::*;
 use std::collections::HashMap;
@@ -57,9 +58,9 @@ impl Scene for Game {
         SceneOutcome::None
     }
 
-    fn draw(&self, screen_rect: Rect) -> TriangleBuffer {
+    fn draw(&self, screen_rect: Rect) -> (Option<TriangleBuffer>, Option<TriangleBufferUV>) {
         let mut buf = TriangleBuffer::new(screen_rect);
         buf.draw_rect(Rect::new(0.25, 0.25, 0.5, 0.5), Vec3::new(1.0, 0.0, 0.0), 1.0);
-        buf
+        (Some(buf), None)
     }
 }

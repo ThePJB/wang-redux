@@ -88,3 +88,12 @@ functionality:
     clicking on level
     button textures / letters
     snowkoban text.png
+
+---------
+
+Texture rendering
+    font, 16x16?
+        letter/text buttons
+    player
+    goal
+    powerup

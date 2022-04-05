@@ -2,6 +2,7 @@ use glow::*;
 use crate::editor::*;
 use crate::game::*;
 use crate::renderer::*;
+use crate::rendererUV::*;
 use crate::rect::*;
 use crate::kmath::*;
 
@@ -41,7 +42,7 @@ pub enum SceneSignal {
 pub trait Scene {
     fn handle_event(&mut self, event: &glutin::event::Event<()>, screen_rect: Rect, cursor_pos: Vec2) -> SceneOutcome;
     fn handle_signal(&mut self, signal: SceneSignal) -> SceneOutcome;
-    fn draw(&self, screen_rect: Rect) -> TriangleBuffer;
+    fn draw(&self, screen_rect: Rect) -> (Option<TriangleBuffer>, Option<TriangleBufferUV>);
 }
 
 
@@ -52,8 +53,7 @@ pub struct Application {
     window: glutin::WindowedContext<glutin::PossiblyCurrent>,
 
     renderer: Renderer,
-
-    shader_program: glow::Program,
+    rendererUV: RendererUV,
 
     cursor_pos: Vec2,
 
@@ -71,11 +71,14 @@ impl Application {
 
         let (gl, window) = unsafe { opengl_boilerplate(default_xres, default_yres, event_loop) };
 
-        let renderer = Renderer::new(&gl, default_xres/default_yres);
+        let basic_shader = make_shader(&gl, "src/basic.vert", "src/basic.frag");
+        let uv_shader = make_shader(&gl, "src/uv.vert", "src/uv.frag");
 
-        let shader_program = make_shader(&gl, "src/test.vert", "src/test.frag");
+        let renderer = Renderer::new(&gl, basic_shader);
+        let rendererUV = RendererUV::new(&gl, uv_shader, "src/atlas.png");
 
-        unsafe { gl.use_program(Some(shader_program)); }
+
+        // unsafe { gl.use_program(Some(shader_program)); }
 
         let mut scene_stack: Vec<Box<dyn Scene>> = Vec::new();
         scene_stack.push(Box::new(Editor::new()));
@@ -84,8 +87,7 @@ impl Application {
             gl,
             window,
             renderer,
-
-            shader_program,
+            rendererUV,
 
             xres: default_xres,
             yres: default_yres,
@@ -141,8 +143,13 @@ impl Application {
     pub fn draw(&mut self) {
         unsafe { self.gl.clear(glow::COLOR_BUFFER_BIT | glow::DEPTH_BUFFER_BIT); } 
 
-        let tris = self.scene_stack[self.scene_stack.len()-1].draw(self.screen_rect());
-        self.renderer.present(&self.gl, tris);
+        let (maybe_tris, maybe_uv_tris) = self.scene_stack[self.scene_stack.len()-1].draw(self.screen_rect());
+        if let Some(tris) = maybe_tris {
+            self.renderer.present(&self.gl, tris);
+        }
+        if let Some(uv_tris) = maybe_uv_tris {
+            self.rendererUV.present(&self.gl, uv_tris);
+        }
         self.window.swap_buffers().unwrap();
     }
 
@@ -203,8 +210,8 @@ unsafe fn opengl_boilerplate(xres: f32, yres: f32, event_loop: &glutin::event_lo
     let gl = glow::Context::from_loader_function(|s| window.get_proc_address(s) as *const _);
     gl.enable(DEPTH_TEST);
     // gl.enable(CULL_FACE);
-    // gl.blend_func(SRC_ALPHA, ONE_MINUS_SRC_ALPHA);
-    // gl.enable(BLEND);
+    gl.blend_func(SRC_ALPHA, ONE_MINUS_SRC_ALPHA);
+    gl.enable(BLEND);
     gl.debug_message_callback(|a, b, c, d, msg| {
         println!("{} {} {} {} msg: {}", a, b, c, d, msg);
     });

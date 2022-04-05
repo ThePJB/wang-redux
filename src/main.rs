@@ -1,4 +1,5 @@
 mod renderer;
+mod rendererUV;
 mod rect;
 mod kmath;
 mod editor;
@@ -6,7 +7,7 @@ mod level;
 mod application;
 mod game;
 mod colour_picker;
-mod ddtest;
+mod kimg;
 
 
 use application::*;
@@ -19,7 +20,7 @@ use std::env;
 
 fn main() {
     env::set_var("RUST_BACKTRACE", "1");
-    
+
     let event_loop = glutin::event_loop::EventLoop::new();
     let mut application = Application::new(&event_loop);
     
