@@ -40,8 +40,6 @@ impl TriangleBufferUV {
         let uv_h = 1.0 / self.atlas_h as f32;
         let uv = Rect::new(x as f32 * uv_w, y as f32 * uv_h, uv_w, uv_h);
 
-        println!("uv: {:?}", uv);
-
         let v1 = Vert3UV {
             pos: Vec3::new(r.x, r.y, depth),
             colour: colour,

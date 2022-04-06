@@ -97,3 +97,37 @@ Texture rendering
     player
     goal
     powerup
+
+
+------
+rectangle monoid is great
+juicier way to keep context for going in, maybe with a closure or something. background dilate etc. one way would be mutating the state.
+
+theres just a bit of power im missing now that im ad hoccing in this bottom pane. It needs to be defined once. could be self.level_rect(screen_rect) and self.botpane_rect(screen_rect).
+
+layout should absolutely be a pure function because who wants to fucking reflow / manage the dom. Could be a tree of divs. name them divs
+
+its amazing how being expression based it just always works
+
+need an atlas manifest somewhere
+
+-----
+
+could absolutely have a goto powerup
+as well as the program powerup
+and probably a wall that is immune to the program powerup
+
+-----
+
+ok whats next like the loading and saving. Could i just load and save hashes, and maybe have a menu that sorts them by complexity. because thats always a big fuck around.
+
+classifying / sorting levels automatically would be easy af
+
+can go wide on the menu pane - stylish
+pure functions for drawing then?
+pre render could even be just a list
+
+------
+
+click save: dump the level json
+click load: level menu scene, open folder, make list of levels, sort by complexity, present. delete button.

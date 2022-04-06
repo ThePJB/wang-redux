@@ -10,7 +10,9 @@ pub struct Level {
     pub h: i32,
 
     pub tape: Vec<Vec3>,
+    pub tape_cursor: i32,
     pub player: (i32, i32),
+    pub alive: bool,
     pub goal: (i32, i32),
     pub powerups: Vec<(i32, i32, i32)>,
 }
@@ -25,6 +27,8 @@ impl Level {
             player: (0,0),
             goal: (0,0),
             powerups: vec![],
+            alive: true,
+            tape_cursor: 0,
         }
     }
 
@@ -69,8 +73,8 @@ impl Level {
                 buf.draw_rect(rect.dilate(-0.005).grid_child(i, j, self.w, self.h).dilate(-0.005), self.get_tile(i, j), 100.0)
             }
         }
-        buf_uv.draw_sprite(rect.grid_child(self.player.0, self.player.1, self.w, self.h), 0, 200.0);
         buf_uv.draw_sprite(rect.grid_child(self.goal.0, self.goal.1, self.w, self.h), 2, 200.0);
+        buf_uv.draw_sprite(rect.grid_child(self.player.0, self.player.1, self.w, self.h), if self.alive {0} else {3}, 201.0);
         for powerup in self.powerups.iter() {
             buf_uv.draw_sprite(rect.grid_child(powerup.0, powerup.1, self.w, self.h), 1, 200.0);
         }
