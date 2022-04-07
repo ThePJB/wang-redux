@@ -1,6 +1,7 @@
 use glow::*;
 use crate::editor::*;
 use crate::game::*;
+use crate::level::Level;
 use crate::renderer::*;
 use crate::rendererUV::*;
 use crate::rect::*;
@@ -33,7 +34,8 @@ pub enum SceneOutcome {
 
 pub enum SceneSignal {
     JustPop,
-    Colour(Vec3),
+    LevelChoice(Level),
+    Colour(usize),
     Amount(i32),
     Dimensions(i32, i32),
     // eg level success

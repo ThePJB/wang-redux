@@ -5,7 +5,7 @@ pub struct Vec2 {
 }
 
 impl Vec2 {
-    pub fn new(x: f32, y: f32) -> Vec2 { Vec2{x, y} }
+    pub const fn new(x: f32, y: f32) -> Vec2 { Vec2{x, y} }
     pub fn mul_scalar(&self, scalar: f32) -> Vec2 { Vec2::new(self.x * scalar, self.y * scalar) }
     pub fn div_scalar(&self, scalar: f32) -> Vec2 { Vec2::new(self.x / scalar, self.y / scalar) }
     pub fn magnitude(&self) -> f32 { (self.x*self.x + self.y*self.y).sqrt() }
@@ -87,7 +87,7 @@ pub struct Vec3 {
 }
 
 impl Vec3 {
-    pub fn new(x: f32, y: f32, z: f32) -> Vec3 { Vec3{x, y, z} }
+    pub const fn new(x: f32, y: f32, z: f32) -> Vec3 { Vec3{x, y, z} }
     pub fn mul_scalar(&self, scalar: f32) -> Vec3 { Vec3::new(self.x * scalar, self.y * scalar, self.z * scalar) }
     pub fn div_scalar(&self, scalar: f32) -> Vec3 { Vec3::new(self.x / scalar, self.y / scalar, self.z / scalar) }
     pub fn magnitude(&self) -> f32 { (self.x*self.x + self.y*self.y + self.z*self.z).sqrt() }

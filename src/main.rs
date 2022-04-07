@@ -8,7 +8,8 @@ mod application;
 mod game;
 mod colour_picker;
 mod kimg;
-
+mod manifest;
+mod level_menu;
 
 use application::*;
 use glutin::event::{Event, WindowEvent};

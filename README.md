@@ -131,3 +131,24 @@ pre render could even be just a list
 
 click save: dump the level json
 click load: level menu scene, open folder, make list of levels, sort by complexity, present. delete button.
+
+what else, wild, wall?
+
+should be a manifest for colour values as well
+
+-------
+
+level menu:
+    - query fs, load list of levels
+    - present scrollable list of levels
+        loadlevel signal, might be a lot of copying but who cares
+
+--------
+
+QoL
+
+hotkeys
+undo
+ugly buttons
+level aspect ratio
+ugly magenta

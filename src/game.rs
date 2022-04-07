@@ -4,6 +4,8 @@ use crate::renderer::*;
 use crate::rendererUV::*;
 use crate::rect::*;
 use crate::kmath::*;
+use crate::manifest::*;
+
 use std::collections::HashMap;
 
 use glutin::event::ElementState;
@@ -29,14 +31,20 @@ impl Game {
                 if self.level.alive && new_pos.0 >= 0 && new_pos.0 < self.level.w && new_pos.1 >= 0 && new_pos.1 < self.level.h {
                     self.level.player = new_pos;
                     self.level.tape_cursor = (self.level.tape_cursor + 1) % self.level.tape.len() as i32;
-                    if self.level.get_tile(new_pos.0, new_pos.1) != self.level.tape[self.level.tape_cursor as usize] {
-                        self.level.alive = false;
-                    } else {
-                        if self.level.goal == self.level.player {
-                            println!("winner!");
-                            return SceneOutcome::Pop(SceneSignal::JustPop);
-                        }
+                    match self.level.get_tile(new_pos.0, new_pos.1) {
+                        Tile::Colour(colour) => {
+                            if colour != self.level.tape[self.level.tape_cursor as usize] {
+                                self.level.alive = false;
+                            } else {
+                                if self.level.goal == self.level.player {
+                                    println!("winner!");
+                                    return SceneOutcome::Pop(SceneSignal::JustPop);
+                                }
+                            }
+                        },
+                        _ => {},
                     }
+                    
                 }
             },
             GameCommand::Undo => {},
@@ -98,7 +106,7 @@ impl Scene for Game {
             if i as i32 == self.level.tape_cursor {
                 buf.draw_rect(sym_rect.dilate(-0.01), Vec3::new(1.0, 1.0, 1.0), 3.0);
             }
-            buf.draw_rect(sym_rect.dilate(-0.01).dilate(-0.01), *sym, 4.0);
+            buf.draw_rect(sym_rect.dilate(-0.01).dilate(-0.01), COLOURS[*sym], 4.0);
         }
 
         (Some(buf), Some(bufUV))

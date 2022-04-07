@@ -5,8 +5,11 @@ use crate::rendererUV::*;
 use crate::rect::*;
 use crate::application::*;
 use crate::game::*;
+use crate::level_menu::*;
+use crate::manifest::*;
 
 use std::collections::HashMap;
+use std::fmt::*;
 
 use glutin::event::ElementState;
 use glutin::event::MouseButton;
@@ -19,7 +22,7 @@ use glutin::event::WindowEvent::CursorMoved;
 
 #[derive(Clone, Copy, Debug)]
 pub enum CursorState {
-    ColourPlacer(Vec3),
+    ColourPlacer(usize),
     PlacePlayer,
     PlacePowerup,
     PlaceGoal,
@@ -33,7 +36,7 @@ pub enum EditorCommand {
 
     Resize(i32, i32),
 
-    SetColour(Vec3),
+    SetColour(usize),
     
     PlayLevel,
     SaveLevel,
@@ -119,6 +122,10 @@ impl Scene for Editor {
         match signal {
             SceneSignal::Colour(c) => {
                 self.handle_command(EditorCommand::SetColour(c))},
+            SceneSignal::LevelChoice(level) => {
+                self.level = level;
+                return SceneOutcome::None
+            },
             _ => {SceneOutcome::None},
         }
     }
@@ -149,7 +156,7 @@ impl Scene for Editor {
         for (i, sym) in self.level.tape.iter().enumerate() {
             let sym_rect = bot_rect.grid_child(i as i32, 0, n as i32, 1).fit_center_square();
             buf.draw_rect(sym_rect.dilate(-0.01), Vec3::new(1.0, 1.0, 1.0), 3.0);
-            buf.draw_rect(sym_rect.dilate(-0.01).dilate(-0.01), *sym, 4.0);
+            buf.draw_rect(sym_rect.dilate(-0.01).dilate(-0.01), COLOURS[*sym], 4.0);
         }
 
         (Some(buf), Some(buf_uv))
@@ -159,7 +166,7 @@ impl Scene for Editor {
 impl Editor {
     pub fn new() -> Editor {
         Editor {
-            cursor_state: CursorState::ColourPlacer(Vec3::new(1.0, 0.0, 0.0)),
+            cursor_state: CursorState::ColourPlacer(0),
             level: Level::new(6,6),
             powerup_amount: 3,
         }
@@ -173,34 +180,25 @@ impl Editor {
         let rpane = Rect::new(level_rect.x + level_rect.w, screen_rect.y, level_rect.x, screen_rect.h);
 
 
-        buttons.push(Button {rect: lpane.grid_child(0, 0, 2, 8).dilate(-0.01), command: EditorCommand::PlayLevel, hotkey: VirtualKeyCode::Space, appearance: ButtonAppearance::Texture(20)});
-        buttons.push(Button {rect: lpane.grid_child(1, 0, 2, 8).dilate(-0.01), command: EditorCommand::SaveLevel, hotkey: VirtualKeyCode::S, appearance: ButtonAppearance::Texture(22)});
-        buttons.push(Button {rect: lpane.grid_child(1, 1, 2, 8).dilate(-0.01), command: EditorCommand::LoadLevel, hotkey: VirtualKeyCode::L, appearance: ButtonAppearance::Texture(21)});
-        buttons.push(Button {rect: lpane.grid_child(0, 2, 2, 8).dilate(-0.01), command: EditorCommand::SetCursor(CursorState::PlacePlayer), hotkey: VirtualKeyCode::P, appearance: ButtonAppearance::Texture(0)});
-        buttons.push(Button {rect: lpane.grid_child(1, 2, 2, 8).dilate(-0.01), command: EditorCommand::SetCursor(CursorState::PlaceGoal), hotkey: VirtualKeyCode::G, appearance: ButtonAppearance::Texture(2)});
+        buttons.push(Button {rect: lpane.grid_child(0, 0, 2, 8).dilate(-0.01), command: EditorCommand::PlayLevel, hotkey: VirtualKeyCode::Space, appearance: ButtonAppearance::Texture(PLAY)});
+        buttons.push(Button {rect: lpane.grid_child(1, 0, 2, 8).dilate(-0.01), command: EditorCommand::SaveLevel, hotkey: VirtualKeyCode::S, appearance: ButtonAppearance::Texture(SAVE)});
+        buttons.push(Button {rect: lpane.grid_child(1, 1, 2, 8).dilate(-0.01), command: EditorCommand::LoadLevel, hotkey: VirtualKeyCode::L, appearance: ButtonAppearance::Texture(OPEN)});
+        buttons.push(Button {rect: lpane.grid_child(0, 2, 2, 8).dilate(-0.01), command: EditorCommand::SetCursor(CursorState::PlacePlayer), hotkey: VirtualKeyCode::P, appearance: ButtonAppearance::Texture(PLAYER)});
+        buttons.push(Button {rect: lpane.grid_child(1, 2, 2, 8).dilate(-0.01), command: EditorCommand::SetCursor(CursorState::PlaceGoal), hotkey: VirtualKeyCode::G, appearance: ButtonAppearance::Texture(GOAL)});
         buttons.push(Button {rect: lpane.grid_child(0, 3, 2, 8).dilate(-0.01), command: EditorCommand::PowerupInc, hotkey: VirtualKeyCode::LBracket, appearance: ButtonAppearance::Colour(Vec3::new(0.0, 0.0, 0.0))});
         buttons.push(Button {rect: lpane.grid_child(1, 3, 2, 8).dilate(-0.01), command: EditorCommand::PowerupDec, hotkey: VirtualKeyCode::RBracket, appearance: ButtonAppearance::Colour(Vec3::new(0.0, 0.0, 0.0))});
-        buttons.push(Button {rect: lpane.grid_child(0, 4, 2, 8).dilate(-0.01), command: EditorCommand::SetCursor(CursorState::PlacePowerup), hotkey: VirtualKeyCode::U, appearance: ButtonAppearance::Texture(1)});
+        buttons.push(Button {rect: lpane.grid_child(0, 4, 2, 8).dilate(-0.01), command: EditorCommand::SetCursor(CursorState::PlacePowerup), hotkey: VirtualKeyCode::U, appearance: ButtonAppearance::Texture(POWERUP)});
         buttons.push(Button {rect: lpane.grid_child(1, 4, 2, 8).dilate(-0.01), command: EditorCommand::SetCursor(CursorState::ClearEntity), hotkey: VirtualKeyCode::D, appearance: ButtonAppearance::Colour(Vec3::new(0.0, 0.0, 0.0))});
-        buttons.push(Button {rect: lpane.grid_child(0, 5, 2, 8).dilate(-0.01), command: EditorCommand::Resize(1, 0), hotkey: VirtualKeyCode::F24, appearance: ButtonAppearance::Texture(25)});
-        buttons.push(Button {rect: lpane.grid_child(1, 5, 2, 8).dilate(-0.01), command: EditorCommand::Resize(-1, 0), hotkey: VirtualKeyCode::F24, appearance: ButtonAppearance::Texture(26)});
-        buttons.push(Button {rect: lpane.grid_child(0, 6, 2, 8).dilate(-0.01), command: EditorCommand::Resize(0, 1), hotkey: VirtualKeyCode::F24, appearance: ButtonAppearance::Texture(23)});
-        buttons.push(Button {rect: lpane.grid_child(1, 6, 2, 8).dilate(-0.01), command: EditorCommand::Resize(0, -1), hotkey: VirtualKeyCode::F24, appearance: ButtonAppearance::Texture(24)});
-        buttons.push(Button {rect: lpane.grid_child(0, 7, 2, 8).dilate(-0.01), command: EditorCommand::TapePlus, hotkey: VirtualKeyCode::F24, appearance: ButtonAppearance::Texture(27)});
-        buttons.push(Button {rect: lpane.grid_child(1, 7, 2, 8).dilate(-0.01), command: EditorCommand::TapeMinus, hotkey: VirtualKeyCode::F24, appearance: ButtonAppearance::Texture(28)});
+        buttons.push(Button {rect: lpane.grid_child(0, 5, 2, 8).dilate(-0.01), command: EditorCommand::Resize(1, 0), hotkey: VirtualKeyCode::F24, appearance: ButtonAppearance::Texture(PLUS_W)});
+        buttons.push(Button {rect: lpane.grid_child(1, 5, 2, 8).dilate(-0.01), command: EditorCommand::Resize(-1, 0), hotkey: VirtualKeyCode::F24, appearance: ButtonAppearance::Texture(MINUS_W)});
+        buttons.push(Button {rect: lpane.grid_child(0, 6, 2, 8).dilate(-0.01), command: EditorCommand::Resize(0, 1), hotkey: VirtualKeyCode::F24, appearance: ButtonAppearance::Texture(PLUS_H)});
+        buttons.push(Button {rect: lpane.grid_child(1, 6, 2, 8).dilate(-0.01), command: EditorCommand::Resize(0, -1), hotkey: VirtualKeyCode::F24, appearance: ButtonAppearance::Texture(MINUS_H)});
+        buttons.push(Button {rect: lpane.grid_child(0, 7, 2, 8).dilate(-0.01), command: EditorCommand::TapePlus, hotkey: VirtualKeyCode::F24, appearance: ButtonAppearance::Texture(PLUS_TAPE)});
+        buttons.push(Button {rect: lpane.grid_child(1, 7, 2, 8).dilate(-0.01), command: EditorCommand::TapeMinus, hotkey: VirtualKeyCode::F24, appearance: ButtonAppearance::Texture(MINUS_TAPE)});
 
-        let colours = vec![
-            Vec3::new(1.0, 0.0, 0.0),
-            Vec3::new(1.0, 1.0, 0.0),
-            Vec3::new(0.0, 1.0, 0.0),
-            Vec3::new(0.0, 1.0, 1.0),
-            Vec3::new(0.0, 0.0, 1.0),
-            Vec3::new(0.0, 0.0, 0.0),
-            Vec3::new(1.0, 1.0, 1.0),
-        ];
-
-        for (i, colour) in colours.iter().enumerate() {
-            buttons.push(Button {rect: rpane.grid_child(0, i as i32, 1, 7).dilate(-0.01), appearance: ButtonAppearance::Colour(*colour), command: EditorCommand::SetColour(*colour), hotkey: VirtualKeyCode::F24});
+        for i in 0..COLOURS.len() {
+        // for (i, colour) in COLOURS.iter().enumerate() {
+            buttons.push(Button {rect: rpane.grid_child(0, i as i32, 1, 7).dilate(-0.01), appearance: ButtonAppearance::Colour(COLOURS[i]), command: EditorCommand::SetColour(i), hotkey: VirtualKeyCode::F24});
         }
 
         return buttons;
@@ -222,7 +220,7 @@ impl Editor {
             EditorCommand::SetCursor(state) => {self.cursor_state = state},
             EditorCommand::Curse(x, y) => {
                 match self.cursor_state {
-                    CursorState::ColourPlacer(colour) => {self.level.set_tile(x, y, colour)},
+                    CursorState::ColourPlacer(colour) => {self.level.set_tile(x, y, Tile::Colour(colour))},
                     CursorState::PlacePlayer => {self.level.player = (x, y)},
                     CursorState::PlacePowerup => {
                         self.level.powerups.retain(|(px, py, n)| x != *px || y != *py);
@@ -235,9 +233,16 @@ impl Editor {
             EditorCommand::Resize(w, h) => {self.level.resize(self.level.w + w, self.level.h + h)},
             EditorCommand::SetColour(colour) => {self.cursor_state = CursorState::ColourPlacer(colour)},
             EditorCommand::PlayLevel => {return SceneOutcome::Push(Box::new(Game {level: self.level.clone()}))},
-            EditorCommand::SaveLevel => {},
-            EditorCommand::LoadLevel => {},
-            EditorCommand::TapePlus => {self.level.tape.push(Vec3::new(0.0, 0.0, 0.0))},
+            EditorCommand::SaveLevel => {
+                let hash = self.level.hash();
+                let path = format!("levels/{}.level", hash);
+                let metadata = LevelMetadata {
+                    level: self.level.clone(), name: String::from("untitled"), rating: 69,
+                };
+                metadata.save(&path);
+            },
+            EditorCommand::LoadLevel => {return SceneOutcome::Push(Box::new(LevelMenu::new()))},
+            EditorCommand::TapePlus => {self.level.tape.push(0)},
             EditorCommand::TapeMinus => {
                 if self.level.tape.len() > 1 {
                     let _ = self.level.tape.pop();
