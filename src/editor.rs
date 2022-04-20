@@ -1,53 +1,39 @@
 use crate::level::*;
 use crate::kmath::*;
 use crate::renderer::*;
-use crate::rendererUV::*;
-use crate::rect::*;
 use crate::application::*;
 use crate::game::*;
 use crate::level_menu::*;
 use crate::manifest::*;
+use crate::kgui::*;
+use crate::rendererUV::TriangleBufferUV;
 
 use std::collections::HashMap;
 use std::fmt::*;
 
-use glutin::event::ElementState;
-use glutin::event::MouseButton;
 use glutin::event::VirtualKeyCode;
-use glutin::event::Event;
-use glutin::event::WindowEvent::KeyboardInput;
-use glutin::event::WindowEvent::MouseInput;
-use glutin::event::WindowEvent::CursorMoved;
 
-
-#[derive(Clone, Copy, Debug)]
-pub enum CursorState {
-    ColourPlacer(usize),
-    PlacePlayer,
-    PlacePowerup,
-    PlaceGoal,
-    ClearEntity,
-}
 
 #[derive(Clone, Copy, Debug)]
 pub enum EditorCommand {
-    SetCursor(CursorState),
-    Curse(i32, i32),
+    PlaceTile(i32, i32),
+    ClearTile(i32, i32),
+    PickTile(i32, i32),
 
-    Resize(i32, i32),
+    SelectTileWedge(i32),
+    RotateRight,
+    RotateLeft,
 
-    SetColour(usize),
+    AlterDims(i32, i32),
     
+    AddPaletteTile,
+    PlacePaletteTile(i32),
+    PickPaletteTile(i32),
+    RemovePaletteTile(i32),
+
     PlayLevel,
     SaveLevel,
     LoadLevel,
-
-    PowerupInc,
-    PowerupDec,
-
-    TapePlus,
-    TapeMinus,
-    CurseTape(i32),
 }
 
 
@@ -64,64 +50,107 @@ pub enum ButtonAppearance {
 }
 
 pub struct Editor {
-    pub cursor_state: CursorState,
     pub level: Level,
-    pub powerup_amount: i32,
+    pub place_tile: Tile,
+    pub tile_selection: usize,
 }
 
 impl Scene for Editor {
-    fn handle_event(&mut self, event: &Event<()>, screen_rect: Rect, cursor_pos: Vec2) -> SceneOutcome {
-        let buttons = self.buttons(screen_rect);
+    fn frame(&mut self, inputs: FrameInputState) -> (SceneOutcome, TriangleBuffer, Option<TriangleBufferUV>) {
+        let click = inputs.events.iter().any(|e| match e {KEvent::MouseLeft(true) => true, _ => false});
+        let clickr = inputs.events.iter().any(|e| match e {KEvent::MouseRight(true) => true, _ => false});
+        let clickm = inputs.events.iter().any(|e| match e {KEvent::MouseMiddle(true) => true, _ => false});
+        let mut so = SceneOutcome::None;
+        let mut buf = TriangleBuffer::new(inputs.screen_rect);
+        let mut buf_uv = TriangleBufferUV::new(inputs.screen_rect, ATLAS_W, ATLAS_H);
 
-        let mut key_cmd_schema = HashMap::new();
-        key_cmd_schema.insert(VirtualKeyCode::Space, EditorCommand::PlayLevel);
-
-        let command = match event {
-            Event::WindowEvent {event, ..} => match event {
-
-                KeyboardInput { input: glutin::event::KeyboardInput { virtual_keycode: Some(virtual_code), state: ElementState::Pressed, ..}, ..} => {
-                    if let Some(cmd) = key_cmd_schema.get(virtual_code) {
-                        Some(*cmd)
-                   } else {
-                       None
-                   }
-                },
-
-                MouseInput { button: glutin::event::MouseButton::Left, state: glutin::event::ElementState::Pressed, ..} => {
-                    let gui_button_cmd = buttons.iter().filter(|b| b.rect.contains(cursor_pos)).map(|b| b.command).nth(0);
-                    if gui_button_cmd.is_some() {
-                        gui_button_cmd
-                    } else {
-                        let level_rect = screen_rect.child(0.0, 0.0, 1.0, 0.9).fit_center_square();
-                        if level_rect.contains(cursor_pos) {
-                            let (x, y) = level_rect.grid_square(level_rect.relative_point(cursor_pos), self.level.w, self.level.h);
-                            Some(EditorCommand::Curse(x, y))
-                        } else {
-                            let bot_rect = Rect::new(level_rect.x, level_rect.h, screen_rect.w - 2.0 * level_rect.x, 0.1 * screen_rect.h);
-                            let n = self.level.tape.len();
-                            self.level.tape.iter().enumerate().filter(|(i, _)| {
-                                let sym_rect = bot_rect.grid_child(*i as i32, 0, n as i32, 1).fit_center_square();
-                                sym_rect.contains(cursor_pos)
-                            }).map(|(i, _)| EditorCommand::CurseTape(i as i32)).nth(0)
-                        }
-                    }
-                },
-                _ => None,
-            },
-            _ => None,
+        let center_pane = inputs.screen_rect.child(0.15, 0.0, 0.7, 1.0);
+        let left_pane = Rect::new(0.0, 0.0, (inputs.screen_rect.w - center_pane.w) / 2.0, 1.0);
+        let mut button = |x, y, cmd, icon| {
+            let button_rect = left_pane.grid_child(x, y, 2, 5).dilate(-0.01);
+            buf.draw_rect(button_rect, Vec3::new(0.1, 0.1, 0.1), 5.0);
+            buf_uv.draw_sprite(button_rect.fit_center_square(), icon, 6.0);
+            if click && button_rect.contains(inputs.mouse_pos) {
+                self.handle_command(cmd)
+            } else {
+                SceneOutcome::None
+            }
         };
+        match so { SceneOutcome::None => {so = button(0, 0, EditorCommand::PlayLevel, PLAY) }, _ => {}};
+        match so { SceneOutcome::None => {so = button(1, 0, EditorCommand::LoadLevel, OPEN) }, _ => {}};
+        button(0, 1, EditorCommand::SaveLevel, SAVE);
+        button(0, 2, EditorCommand::AlterDims(1, 0), PLUS_W);
+        button(1, 2, EditorCommand::AlterDims(-1, 0), MINUS_W);
+        button(0, 3, EditorCommand::AlterDims(0, 1), PLUS_H);
+        button(1, 3, EditorCommand::AlterDims(0, -1), MINUS_H);
+        button(0, 4, EditorCommand::AddPaletteTile, PLUS_TAPE);
 
-        if let Some(command) = command {
-            self.handle_command(command)
-        } else {
-            SceneOutcome::None
+        let (maybe_rollover_palette, maybe_rollover_grid) = self.level.frame(&mut buf, &mut buf_uv, center_pane, &inputs, None);
+        if let Some(rollover_palette) = maybe_rollover_palette {
+            if click || inputs.held_lmb {
+                self.handle_command(EditorCommand::PlacePaletteTile(rollover_palette));
+            } else if clickr {
+                self.handle_command(EditorCommand::RemovePaletteTile(rollover_palette));
+            } else if clickm || inputs.held_mmb {
+                self.handle_command(EditorCommand::PickPaletteTile(rollover_palette));
+            }
         }
+        if let Some((x, y)) = maybe_rollover_grid {
+            if click || inputs.held_lmb {
+                self.handle_command(EditorCommand::PlaceTile(x, y));
+            } else if clickr || inputs.held_rmb {
+                self.handle_command(EditorCommand::ClearTile(x, y));
+            } else if clickm || inputs.held_mmb {
+                self.handle_command(EditorCommand::PickTile(x, y));
+            }
+        }
+
+        let mut scene_outcomes: Vec<SceneOutcome> = inputs.events.iter().filter_map(|e| match e {
+            KEvent::Keyboard(VirtualKeyCode::Q, true) => Some(EditorCommand::RotateLeft),
+            KEvent::Keyboard(VirtualKeyCode::E, true) => Some(EditorCommand::RotateRight),
+            KEvent::Keyboard(VirtualKeyCode::Space, true) => Some(EditorCommand::PlayLevel),
+            KEvent::Keyboard(VirtualKeyCode::O, true) => Some(EditorCommand::LoadLevel),
+            KEvent::Keyboard(VirtualKeyCode::S, true) => Some(EditorCommand::SaveLevel),
+            _ => None,
+        }).map(|c| self.handle_command(c)).collect();
+        scene_outcomes.push(so);
+
+        let right_pane = Rect::new(center_pane.right(), 0.0, (inputs.screen_rect.w - center_pane.w) / 2.0, 1.0);
+
+        let place_tile_pane = Rect::new(right_pane.x, 0.0, right_pane.w, right_pane.w);
+        let place_tile_square = place_tile_pane.dilate(-0.01);
+
+        for i in 0..=3 {
+            let place_tri = place_tile_square.tri_child(i);
+            if click && place_tri.contains(inputs.mouse_pos) {
+                self.tile_selection = i;
+                println!("spaget {}", i);
+            }
+            if self.tile_selection == i {
+                buf.draw_tri(place_tri.dilate(0.05), Vec3::new(1.0, 1.0, 1.0), 10.0);
+                buf.draw_tri(place_tri, COLOURS[self.place_tile[i] as usize], 11.0);
+            } else {
+                buf.draw_tri(place_tri, COLOURS[self.place_tile[i] as usize], 9.0);
+            }
+        }
+
+        let right_bot_pane = Rect::new(place_tile_pane.x, place_tile_pane.bot(), place_tile_pane.w, right_pane.h - place_tile_pane.h);
+        for i in 0..COLOURS.len() {
+            let colour_rect = right_bot_pane.grid_child(0, i as i32, 1, COLOURS.len() as i32);
+            buf.draw_rect(colour_rect, COLOURS[i], 10.0);
+            if click && colour_rect.contains(inputs.mouse_pos) {
+                self.place_tile[self.tile_selection] = i as u8;
+            }
+        }
+
+        buf.draw_rect(left_pane, Vec3::new(0.2, 0.2, 0.2), 1.0);
+        buf.draw_rect(right_pane, Vec3::new(0.2, 0.2, 0.2), 1.0);
+
+        (scene_outcomes.remove(0), buf, Some(buf_uv))
     }
 
     fn handle_signal(&mut self, signal: SceneSignal) -> SceneOutcome {
         match signal {
-            SceneSignal::Colour(c) => {
-                self.handle_command(EditorCommand::SetColour(c))},
             SceneSignal::LevelChoice(level) => {
                 self.level = level;
                 return SceneOutcome::None
@@ -129,110 +158,52 @@ impl Scene for Editor {
             _ => {SceneOutcome::None},
         }
     }
-
-    fn draw(&self, screen_rect: Rect) -> (Option<TriangleBuffer>, Option<TriangleBufferUV>) {
-        let mut buf = TriangleBuffer::new(screen_rect);
-        let mut buf_uv = TriangleBufferUV::new(screen_rect, 20, 20);
-
-        buf.draw_rect(screen_rect.child(0.0, 0.0, 1.0, 1.0), Vec3::new(0.9, 0.1, 0.9), 1.0);
-        let level_rect = screen_rect.child(0.0, 0.0, 1.0, 0.9).fit_center_square();
-        self.level.draw(&mut buf, &mut buf_uv, level_rect);
-
-        let buttons = self.buttons(screen_rect);
-
-        for button in buttons {
-            buf.draw_rect(button.rect, Vec3::new(0.2, 0.2, 0.2), 2.0);
-            buf.draw_rect(button.rect.child(0.97, 0.0, 0.03, 1.0), Vec3::new(0.1, 0.1, 0.1), 3.0);
-            buf.draw_rect(button.rect.child(0.0, 0.97, 1.0, 0.03), Vec3::new(0.1, 0.1, 0.1), 3.0);
-            match button.appearance {
-                ButtonAppearance::Colour(colour) => buf.draw_rect(button.rect.dilate(-0.01), colour, 4.0),
-                ButtonAppearance::Texture(idx) => {buf_uv.draw_sprite(button.rect.fit_center_square(), idx, 5.0)},
-            }
-        }
-
-        let bot_rect = Rect::new(level_rect.x, level_rect.h, screen_rect.w - 2.0 * level_rect.x, 0.1 * screen_rect.h);
-        buf.draw_rect(bot_rect, Vec3::new(0.2, 0.2, 0.2), 2.0);
-        let n = self.level.tape.len();
-        for (i, sym) in self.level.tape.iter().enumerate() {
-            let sym_rect = bot_rect.grid_child(i as i32, 0, n as i32, 1).fit_center_square();
-            buf.draw_rect(sym_rect.dilate(-0.01), Vec3::new(1.0, 1.0, 1.0), 3.0);
-            buf.draw_rect(sym_rect.dilate(-0.01).dilate(-0.01), COLOURS[*sym], 4.0);
-        }
-
-        (Some(buf), Some(buf_uv))
-    }
 }
 
 impl Editor {
     pub fn new() -> Editor {
         Editor {
-            cursor_state: CursorState::ColourPlacer(0),
-            level: Level::new(6,6),
-            powerup_amount: 3,
+            level: Level::new(4,4),
+            place_tile: [0; 4],
+            tile_selection: 0,
         }
     }
-
-    pub fn buttons(&self, screen_rect: Rect) -> Vec<Button> {
-        let mut buttons = Vec::new();
-
-        let level_rect = screen_rect.fit_center_square();
-        let lpane = Rect::new(screen_rect.x, screen_rect.y, level_rect.x, screen_rect.h);
-        let rpane = Rect::new(level_rect.x + level_rect.w, screen_rect.y, level_rect.x, screen_rect.h);
-
-
-        buttons.push(Button {rect: lpane.grid_child(0, 0, 2, 8).dilate(-0.01), command: EditorCommand::PlayLevel, hotkey: VirtualKeyCode::Space, appearance: ButtonAppearance::Texture(PLAY)});
-        buttons.push(Button {rect: lpane.grid_child(1, 0, 2, 8).dilate(-0.01), command: EditorCommand::SaveLevel, hotkey: VirtualKeyCode::S, appearance: ButtonAppearance::Texture(SAVE)});
-        buttons.push(Button {rect: lpane.grid_child(1, 1, 2, 8).dilate(-0.01), command: EditorCommand::LoadLevel, hotkey: VirtualKeyCode::L, appearance: ButtonAppearance::Texture(OPEN)});
-        buttons.push(Button {rect: lpane.grid_child(0, 2, 2, 8).dilate(-0.01), command: EditorCommand::SetCursor(CursorState::PlacePlayer), hotkey: VirtualKeyCode::P, appearance: ButtonAppearance::Texture(PLAYER)});
-        buttons.push(Button {rect: lpane.grid_child(1, 2, 2, 8).dilate(-0.01), command: EditorCommand::SetCursor(CursorState::PlaceGoal), hotkey: VirtualKeyCode::G, appearance: ButtonAppearance::Texture(GOAL)});
-        buttons.push(Button {rect: lpane.grid_child(0, 3, 2, 8).dilate(-0.01), command: EditorCommand::PowerupInc, hotkey: VirtualKeyCode::LBracket, appearance: ButtonAppearance::Colour(Vec3::new(0.0, 0.0, 0.0))});
-        buttons.push(Button {rect: lpane.grid_child(1, 3, 2, 8).dilate(-0.01), command: EditorCommand::PowerupDec, hotkey: VirtualKeyCode::RBracket, appearance: ButtonAppearance::Colour(Vec3::new(0.0, 0.0, 0.0))});
-        buttons.push(Button {rect: lpane.grid_child(0, 4, 2, 8).dilate(-0.01), command: EditorCommand::SetCursor(CursorState::PlacePowerup), hotkey: VirtualKeyCode::U, appearance: ButtonAppearance::Texture(POWERUP)});
-        buttons.push(Button {rect: lpane.grid_child(1, 4, 2, 8).dilate(-0.01), command: EditorCommand::SetCursor(CursorState::ClearEntity), hotkey: VirtualKeyCode::D, appearance: ButtonAppearance::Colour(Vec3::new(0.0, 0.0, 0.0))});
-        buttons.push(Button {rect: lpane.grid_child(0, 5, 2, 8).dilate(-0.01), command: EditorCommand::Resize(1, 0), hotkey: VirtualKeyCode::F24, appearance: ButtonAppearance::Texture(PLUS_W)});
-        buttons.push(Button {rect: lpane.grid_child(1, 5, 2, 8).dilate(-0.01), command: EditorCommand::Resize(-1, 0), hotkey: VirtualKeyCode::F24, appearance: ButtonAppearance::Texture(MINUS_W)});
-        buttons.push(Button {rect: lpane.grid_child(0, 6, 2, 8).dilate(-0.01), command: EditorCommand::Resize(0, 1), hotkey: VirtualKeyCode::F24, appearance: ButtonAppearance::Texture(PLUS_H)});
-        buttons.push(Button {rect: lpane.grid_child(1, 6, 2, 8).dilate(-0.01), command: EditorCommand::Resize(0, -1), hotkey: VirtualKeyCode::F24, appearance: ButtonAppearance::Texture(MINUS_H)});
-        buttons.push(Button {rect: lpane.grid_child(0, 7, 2, 8).dilate(-0.01), command: EditorCommand::TapePlus, hotkey: VirtualKeyCode::F24, appearance: ButtonAppearance::Texture(PLUS_TAPE)});
-        buttons.push(Button {rect: lpane.grid_child(1, 7, 2, 8).dilate(-0.01), command: EditorCommand::TapeMinus, hotkey: VirtualKeyCode::F24, appearance: ButtonAppearance::Texture(MINUS_TAPE)});
-
-        for i in 0..COLOURS.len() {
-        // for (i, colour) in COLOURS.iter().enumerate() {
-            buttons.push(Button {rect: rpane.grid_child(0, i as i32, 1, 7).dilate(-0.01), appearance: ButtonAppearance::Colour(COLOURS[i]), command: EditorCommand::SetColour(i), hotkey: VirtualKeyCode::F24});
-        }
-
-        return buttons;
-    }
-
-    // scenes also need to interpret popped values
-    // why im not using dynamic dispatch again? or static dispatch with generics
-    // I want my vecs to work
-
-    // pub fn translate_event(&self, event: Event) -> Option<EditorCommand> {
-    //     // schema usings
-    // }
 
     pub fn handle_command(&mut self, command: EditorCommand) -> SceneOutcome {
         println!("Editor Command: {:?}", command);
         match command {
-            EditorCommand::PowerupInc => {self.powerup_amount += 1},
-            EditorCommand::PowerupDec => {self.powerup_amount -= 1},
-            EditorCommand::SetCursor(state) => {self.cursor_state = state},
-            EditorCommand::Curse(x, y) => {
-                match self.cursor_state {
-                    CursorState::ColourPlacer(colour) => {self.level.set_tile(x, y, Tile::Colour(colour))},
-                    CursorState::PlacePlayer => {self.level.player = (x, y)},
-                    CursorState::PlacePowerup => {
-                        self.level.powerups.retain(|(px, py, n)| x != *px || y != *py);
-                        self.level.powerups.push((x, y, self.powerup_amount));
-                    },
-                    CursorState::PlaceGoal => {self.level.goal = (x, y)},
-                    CursorState::ClearEntity => {self.level.powerups.retain(|(px, py, n)| x != *px || y != *py)},
+            EditorCommand::AddPaletteTile => {self.level.tile_palette.push(self.place_tile)},
+            EditorCommand::PlacePaletteTile(i) => {self.level.tile_palette[i as usize] = self.place_tile},
+            EditorCommand::RemovePaletteTile(i) => {
+                if self.level.tile_palette.len() > 1 {
+                    self.level.tile_palette.remove(i as usize);
                 }
             },
-            EditorCommand::Resize(w, h) => {self.level.resize(self.level.w + w, self.level.h + h)},
-            EditorCommand::SetColour(colour) => {self.cursor_state = CursorState::ColourPlacer(colour)},
-            EditorCommand::PlayLevel => {return SceneOutcome::Push(Box::new(Game {level: self.level.clone()}))},
+            EditorCommand::PickPaletteTile(i) => {self.place_tile = self.level.tile_palette[i as usize]},
+
+            EditorCommand::RotateLeft => {self.place_tile = [self.place_tile[1], self.place_tile[2], self.place_tile[3], self.place_tile[0]]},
+            EditorCommand::RotateRight => {self.place_tile = [self.place_tile[3], self.place_tile[0], self.place_tile[1], self.place_tile[2]]},
+
+            EditorCommand::PickTile(x, y) => {
+                if let Some(pick_tile) = self.level.get_tile(x, y) {
+                    self.place_tile = pick_tile;
+                }
+            },
+            EditorCommand::ClearTile(x, y) => {
+                self.level.clear_tile(x, y);
+                self.level.set_locked(x, y, false);
+            },
+            EditorCommand::PlaceTile(x, y) => {
+                self.level.set_tile(x, y, self.place_tile);
+                self.level.set_locked(x, y, true);
+            },
+            EditorCommand::SelectTileWedge(i) => {self.tile_selection = i as usize},
+
+            EditorCommand::AlterDims(dx, dy) => {
+                self.level.resize(self.level.w + dx, self.level.h + dy);
+            },
+
+            EditorCommand::PlayLevel => {return SceneOutcome::Push(Box::new(Game {level: self.level.clone(), place_tile: self.level.tile_palette[0], place_idx: 0}))},
             EditorCommand::SaveLevel => {
                 let hash = self.level.hash();
                 let path = format!("levels/{}.level", hash);
@@ -242,18 +213,6 @@ impl Editor {
                 metadata.save(&path);
             },
             EditorCommand::LoadLevel => {return SceneOutcome::Push(Box::new(LevelMenu::new()))},
-            EditorCommand::TapePlus => {self.level.tape.push(0)},
-            EditorCommand::TapeMinus => {
-                if self.level.tape.len() > 1 {
-                    let _ = self.level.tape.pop();
-                }
-            },
-            EditorCommand::CurseTape(pos) => {
-                match self.cursor_state {
-                    CursorState::ColourPlacer(colour) => {self.level.tape[pos as usize] = colour;},
-                    _ => {},
-                }
-            },
         }
         return SceneOutcome::None;
     }

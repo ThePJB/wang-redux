@@ -1,7 +1,7 @@
+use crate::kgui::*;
 use crate::kmath::*;
 use crate::renderer::*;
 use crate::rendererUV::*;
-use crate::rect::*;
 use crate::manifest::*;
 
 use std::fs::File;
@@ -9,12 +9,7 @@ use std::io::prelude::*;
 
 use serde::{Serialize, Deserialize};
 
-#[derive(Clone, Copy, Serialize, Deserialize)]
-pub enum Tile {
-    Colour(usize),
-    Wild,
-    Wall,
-}
+pub type Tile = [u8;4];
 
 #[derive(Serialize, Deserialize)]
 pub struct LevelMetadata {
@@ -35,132 +30,99 @@ impl LevelMetadata {
 
 #[derive(Clone, Serialize, Deserialize)]
 pub struct Level {
-    tiles: Vec<Tile>,
+    pub tiles: Vec<Option<Tile>>,
+    pub locked: Vec<bool>,
     pub w: i32,
     pub h: i32,
 
-    pub tape: Vec<usize>,
-    pub tape_cursor: i32,
-    pub player: (i32, i32),
-    pub alive: bool,
-    pub goal: (i32, i32),
-    pub powerups: Vec<(i32, i32, i32)>,
-    pub gotos: Vec<(i32, i32, i32)>,
+    pub tile_palette: Vec<Tile>,
 }
 
 impl Level {
     pub fn hash(&self) -> u32 {
         let mut h = 0u32;
-        h += khash(self.w as u32);
-        h = khash(h);
-        h += khash(self.h as u32);
-        h = khash(h);
-        h += khash(self.player.0 as u32);
-        h = khash(h);
-        h += khash(self.player.1 as u32);
-        h = khash(h);
-        h += khash(self.goal.0 as u32);
-        h = khash(h);
-        h += khash(self.goal.1 as u32);
-        h = khash(h);
-
-        for (x, y, amount) in self.powerups.iter() {
-            h += khash(*x as u32);
-            h = khash(h);
-            h += khash(*y as u32);
-            h = khash(h);
-            h += khash(*amount as u32);
-            h = khash(h);
-        }
-
-        for (x, y, amount) in self.gotos.iter() {
-            h += khash(*x as u32);
-            h = khash(h);
-            h += khash(*y as u32);
-            h = khash(h);
-            h += khash(*amount as u32);
-            h = khash(h);
-        }
-
-        for c in self.tape.iter() {
-            h += khash(*c as u32);
-            h = khash(h);
-        }
-
+        
         for tile in self.tiles.iter() {
             match tile {
-                Tile::Colour(c) => {
-                    h += khash(*c as u32);
-                    h = khash(h);
+                Some(colours) => {
+                    for colour in colours {
+                        h += khash(*colour as u32);
+                        h = khash(h);
+                    }
                 },
-                Tile::Wall => {
-                    h += khash(999);
-                    h = khash(h);
-                },
-                Tile::Wild => {
+                None => {
                     h += khash(666);
                     h = khash(h);
                 },
             }
         }
+        
         h
     }
 
     pub fn complexity(&self) -> u32 {
+        //first total num tiles then unique tiles then num colours
         let mut complexity = 0u32;
 
-        let num_tape_colours = {
-            let mut tape_sort = self.tape.clone();
-            tape_sort.sort();
-            tape_sort.dedup();
-            tape_sort.iter().count()
+        let num_tiles = self.w * self.h;
+        let num_palette_tiles = self.tile_palette.len();
+        let num_colours = {
+            let mut colours: Vec<u8> = self.tile_palette.iter().flatten().map(|x| *x).collect();
+            colours.sort();
+            colours.dedup();
+            colours.iter().count()
         };
 
-        let num_level_colours = {
-            let mut level_sort: Vec<usize> = self.tiles.iter().filter_map(|t| match t {Tile::Colour(c) => Some(*c), _ => None}).collect();
-            level_sort.sort();
-            level_sort.dedup();
-            level_sort.iter().count()
-        };
-
-        let any_gotos = if self.gotos.len() == 0 { 0 } else { 1 } as usize;
-        let any_walls = if self.tiles.iter().filter(|t| match t {Tile::Wall => true, _ => false}).count() == 0 { 0 } else { 1 } as usize;
-        let any_wilds = if self.tiles.iter().filter(|t| match t {Tile::Wild => true, _ => false}).count() == 0 { 0 } else { 1 } as usize;
-
-        let max_powerup_size = {
-            let mut powerups_sort = self.powerups.clone();
-            powerups_sort.sort_by_key(|(x, y, n)| *n);
-            powerups_sort.iter().map(|(x, y, n)| *n).nth(0).unwrap_or(0)
-        } as usize;
-
-        // bigger: comes later
-
-        (1 * self.tiles.len() + 
-        100 * self.tape.len() +
-        1000 * num_level_colours +
-        10000 * num_tape_colours + 
-        100000 * any_walls +
-        1000000 * any_wilds +
-        10000000 * max_powerup_size +
-        100000000 * any_gotos +
-
-        10000 * self.gotos.len() +
-        10000 * self.powerups.len()) as u32
+        num_colours as u32 * 10000 + num_palette_tiles as u32 * 100 + num_tiles as u32 
     }
 
     pub fn new(w: i32, h: i32) -> Level {
         Level {
             w,
             h,
-            tiles: vec![Tile::Colour(0);( w*h) as usize],
-            tape: vec![0],
-            player: (0,0),
-            goal: (0,0),
-            powerups: vec![],
-            gotos: vec![],
-            alive: true,
-            tape_cursor: 0,
+            tiles: vec![None;(w*h) as usize],
+            locked: vec![false;(w*h) as usize],
+            tile_palette: vec![[0,0,0,0]],
         }
+    }
+
+    pub fn can_place(&self, x: i32, y: i32, place_tile: Tile) -> bool {
+        if x != 0 {
+            if let Some(neigh) = self.get_tile(x, y) {
+                if neigh[1] != place_tile[3] {
+                    println!("reject left edge neighbour");
+                    return false;
+                }
+            }
+        }
+    
+        if x != self.w - 1 {
+            if let Some(neigh) = self.get_tile(x + 1, y) {
+                if neigh[3] != place_tile[1] {
+                    println!("reject right edge neighbour");
+                    return false;
+                }
+            }
+        }
+    
+        if y != self.h - 1 {
+            if let Some(neigh) = self.get_tile(x, y + 1) {
+                if neigh[0] != place_tile[2] {
+                    println!("reject bottom edge neighbour");
+                    return false;
+                }
+            }
+        }
+        
+        if y != 0 {
+            if let Some(neigh) = self.get_tile(x, y - 1) {
+                if neigh[2] != place_tile[0] {
+                    println!("reject top edge neighbour");
+                    return false;
+                }
+            }
+        }
+        true
     }
 
     pub fn set_tile(&mut self, x: i32, y: i32, tile: Tile) {
@@ -168,10 +130,24 @@ impl Level {
             panic!("set tile out of bounds");
         }
 
-        self.tiles[(x * self.h + y) as usize] = tile;
+        self.tiles[(x * self.h + y) as usize] = Some(tile);
+    }
+    pub fn clear_tile(&mut self, x: i32, y: i32) {
+        if x < 0 || y < 0 || x >= self.w || y >= self.h {
+            panic!("set tile out of bounds");
+        }
+
+        self.tiles[(x * self.h + y) as usize] = None;
     }
 
-    pub fn get_tile(&self, x: i32, y: i32) -> Tile {
+    pub fn set_locked(&mut self, x: i32, y: i32, locked: bool) {
+        if x < 0 || y < 0 || x >= self.w || y >= self.h {
+            panic!("set locked tile out of bounds");
+        }
+        self.locked[(x * self.h + y) as usize] = locked;
+    }
+
+    pub fn get_tile(&self, x: i32, y: i32) -> Option<Tile> {
         if x < 0 || y < 0 || x >= self.w || y >= self.h {
             panic!("get tile out of bounds");
         }
@@ -179,39 +155,86 @@ impl Level {
         self.tiles[(x * self.h + y) as usize]
     }
 
+    pub fn get_locked(&self, x: i32, y: i32) -> bool {
+        if x < 0 || y < 0 || x >= self.w || y >= self.h {
+            panic!("get tile out of bounds");
+        }
+
+        self.locked[(x * self.h + y) as usize]
+    }
+
     pub fn resize(&mut self, new_w: i32, new_h: i32) {
         if new_w < 1 || new_h < 1 {
             return;
         }
 
-        let mut new_tiles = vec![Tile::Colour(0); (new_w*new_h) as usize];
+        let mut new_tiles = vec![None; (new_w*new_h) as usize];
+        let mut new_locked = vec![false; (new_w*new_h) as usize];
         for i in 0..new_w.min(self.w) {
             for j in 0..new_h.min(self.h) {
                 let old_tile = self.tiles[(i*self.h + j) as usize];
                 let idx = (i*new_h + j) as usize;
                 new_tiles[idx] = old_tile;
+                let old_locked = self.locked[(i*self.h + j) as usize];
+                let idx = (i*new_h + j) as usize;
+                new_locked[idx] = old_locked;
             }
         }
         self.w = new_w;
         self.h = new_h;
         self.tiles = new_tiles;
+        self.locked = new_locked;
     }
 
-    pub fn draw(&self, buf: &mut TriangleBuffer, buf_uv: &mut TriangleBufferUV, rect: Rect) {
-        buf.draw_rect(rect, Vec3::new(0.2, 0.2, 0.2), 2.0);
-        for i in 0..self.w {
-            for j in 0..self.h {
-                match self.get_tile(i, j) {
-                    Tile::Colour(colour) => {buf.draw_rect(rect.dilate(-0.005).grid_child(i, j, self.w, self.h).dilate(-0.005), COLOURS[colour], 100.0)},
-                    _ => {},
+    pub fn frame(&self, buf: &mut TriangleBuffer, buf_uv: &mut TriangleBufferUV,  rect: Rect, inputs: &FrameInputState, selected_tile: Option<i32>) -> (Option<i32>, Option<(i32, i32)>) {
+        let tiles_pane = rect.child(0.0, 0.0, 0.2, 1.0);
+        let level_pane = rect.child(0.2, 0.0, 0.8, 1.0).fit_aspect_ratio(self.w as f32 / self.h as f32);
+        let level_rect = level_pane.dilate(-0.005);
+
+        buf.draw_rect(level_pane, Vec3::new(0.2, 0.2, 0.2), 1.0);
+
+        // buf.draw_rect(tiles_pane, Vec3::new(0.0, 1.0, 0.0), 100.0);
+        // buf.draw_rect(level_pane, Vec3::new(1.0, 1.0, 0.0), 100.0);
+
+        let mut select_palette_tile = None;
+        let mut select_grid_tile = None;
+
+        for (i, tile) in self.tile_palette.iter().enumerate() {
+            let tile_rect = tiles_pane.grid_child(0, i as i32, 1, self.tile_palette.len() as i32).dilate(-0.01).fit_center_square();
+            if tile_rect.contains(inputs.mouse_pos) {
+                select_palette_tile = Some(i as i32);
+            }
+            draw_tile(buf, tile_rect, *tile);
+            if let Some(idx) = selected_tile {
+                if idx as usize == i {
+                    buf.draw_rect(tile_rect.dilate(0.01), Vec3::new(1.0, 1.0, 1.0), 2.0);
                 }
-                
             }
         }
-        buf_uv.draw_sprite(rect.grid_child(self.goal.0, self.goal.1, self.w, self.h), 2, 200.0);
-        for powerup in self.powerups.iter() {
-            buf_uv.draw_sprite(rect.grid_child(powerup.0, powerup.1, self.w, self.h), 1, 201.0);
+
+        for i in 0..self.w {
+            for j in 0..self.h {
+                let tile_rect = level_rect.grid_child(i, j, self.w, self.h).dilate(-0.005);
+                if tile_rect.contains(inputs.mouse_pos) {
+                    select_grid_tile = Some((i, j));
+                }
+                if let Some(colours) = self.get_tile(i, j) {
+                    draw_tile(buf, tile_rect, colours);
+                    if !self.get_locked(i, j) {
+                        buf_uv.draw_sprite(tile_rect, TILE_EDGES, 4.0);
+                    }
+                } else {
+                    buf.draw_rect(tile_rect, Vec3::new(0.15, 0.15, 0.15), 3.0);
+                }
+            }
         }
-        buf_uv.draw_sprite(rect.grid_child(self.player.0, self.player.1, self.w, self.h), if self.alive {0} else {3}, 202.0);
+
+        (select_palette_tile, select_grid_tile)
+    }
+}
+
+pub fn draw_tile(buf: &mut TriangleBuffer, rect: Rect, tile: Tile) {
+    for (x, colour) in tile.iter().enumerate() {
+        buf.draw_tri(rect.tri_child(x), COLOURS[*colour as usize], 3.0);
     }
 }

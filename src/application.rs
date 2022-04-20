@@ -1,31 +1,14 @@
 use glow::*;
 use crate::editor::*;
 use crate::game::*;
+use crate::kgui::EventAggregator;
+use crate::kgui::FrameInputState;
 use crate::level::Level;
 use crate::renderer::*;
 use crate::rendererUV::*;
-use crate::rect::*;
 use crate::kmath::*;
+use glutin::event::{Event, WindowEvent};
 
-/*
-This makes sense
-maybe it can receive an "I'm done" signal. Thats an exit code. or Error return
-
-This has gl, etc
-this decodes input based on what the thing is
-
-how are we doing the editor/game thing
-maybe a scene stack is a good
-
-where does input go.
-
-I've got that interface point of the EditorCommands enum but application probably doesnt hand it to that
-Somewhere theres logic to translate mouse coordinates and to look up keys in the schema
-mouse logic needs to know about level
-
-is the enum necessary? It constrains things in a pretty nice way making them clean
-even though it will be literally make enum and then do enum lol. But its type checked, functional. Separate decoding from dispatching.
-*/
 pub enum SceneOutcome {
     Push(Box<dyn Scene>),
     Pop(SceneSignal),
@@ -35,35 +18,25 @@ pub enum SceneOutcome {
 pub enum SceneSignal {
     JustPop,
     LevelChoice(Level),
-    Colour(usize),
-    Amount(i32),
-    Dimensions(i32, i32),
-    // eg level success
 }
 
 pub trait Scene {
-    fn handle_event(&mut self, event: &glutin::event::Event<()>, screen_rect: Rect, cursor_pos: Vec2) -> SceneOutcome;
     fn handle_signal(&mut self, signal: SceneSignal) -> SceneOutcome;
-    fn draw(&self, screen_rect: Rect) -> (Option<TriangleBuffer>, Option<TriangleBufferUV>);
+    fn frame(&mut self, inputs: FrameInputState) -> (SceneOutcome, TriangleBuffer, Option<TriangleBufferUV>);
 }
 
-
-
-// boilerplate & scene mgmt
 pub struct Application {
     gl: glow::Context,
     window: glutin::WindowedContext<glutin::PossiblyCurrent>,
 
     renderer: Renderer,
     rendererUV: RendererUV,
-
-    cursor_pos: Vec2,
+    event_aggregator: EventAggregator,
 
     pub xres: f32,
     pub yres: f32,
     
     scene_stack: Vec<Box<dyn Scene>>,
-
 }
 
 impl Application {
@@ -79,9 +52,6 @@ impl Application {
         let renderer = Renderer::new(&gl, basic_shader);
         let rendererUV = RendererUV::new(&gl, uv_shader, "src/atlas.png");
 
-
-        // unsafe { gl.use_program(Some(shader_program)); }
-
         let mut scene_stack: Vec<Box<dyn Scene>> = Vec::new();
         scene_stack.push(Box::new(Editor::new()));
 
@@ -90,10 +60,10 @@ impl Application {
             window,
             renderer,
             rendererUV,
+            event_aggregator: EventAggregator::new(default_xres, default_yres),
 
             xres: default_xres,
             yres: default_yres,
-            cursor_pos: Vec2::new(0.0, 0.0),
 
             scene_stack,
         }
@@ -116,43 +86,33 @@ impl Application {
 
     pub fn handle_event(&mut self, event: &glutin::event::Event<()>) {
         match event {
-            glutin::event::Event::WindowEvent {event: glutin::event::WindowEvent::CursorMoved {position: pos, ..}, ..} => {
-                self.cursor_pos = Vec2::new(pos.x as f32 / self.yres, pos.y as f32 / self.yres); // div yres both times because aspect ratio
-            },
+            Event::WindowEvent { ref event, .. } => match event {
+                WindowEvent::Resized(physical_size) => {
+                    self.window.resize(*physical_size);
+                    self.xres = physical_size.width as f32;
+                    self.yres = physical_size.height as f32;
+                    unsafe {self.gl.viewport(0, 0, physical_size.width as i32, physical_size.height as i32)};
+                },
+                _ => {},
+            _ => {},
+            }
             _ => {},
         }
 
-        let stack_idx = self.scene_stack.len()-1; 
-        let screen_rect = self.screen_rect();
-        let so = self.scene_stack[stack_idx].handle_event(&event, screen_rect, self.cursor_pos);
-        self.handle_scene_outcome(so);
-    }
+        if let Some(inputs) = self.event_aggregator.handle_event(event) {
+            let stack_idx = self.scene_stack.len()-1; 
+            
+            unsafe { self.gl.clear(glow::COLOR_BUFFER_BIT | glow::DEPTH_BUFFER_BIT); } 
 
-    pub fn resize(&mut self, new_xres: f32, new_yres: f32) {
-        let ps = winit::dpi::PhysicalSize::new(new_xres as u32, new_yres as u32);
-        self.window.resize(ps);
-        self.xres = new_xres;
-        self.yres = new_yres;
-        unsafe { self.gl.viewport(0, 0, new_xres as i32, new_yres as i32) };
-        // projection mat aspect ratio too?
-        // renderer resize
-    }
-
-    fn screen_rect(&self) -> Rect {
-        Rect::new(0.0, 0.0, self.xres / self.yres, 1.0)
-    }
-
-    pub fn draw(&mut self) {
-        unsafe { self.gl.clear(glow::COLOR_BUFFER_BIT | glow::DEPTH_BUFFER_BIT); } 
-
-        let (maybe_tris, maybe_uv_tris) = self.scene_stack[self.scene_stack.len()-1].draw(self.screen_rect());
-        if let Some(tris) = maybe_tris {
+            let (so, tris, op_triuvs) = self.scene_stack[stack_idx].frame(inputs);
             self.renderer.present(&self.gl, tris);
+            if let Some(tri_uvs) = op_triuvs {
+                self.rendererUV.present(&self.gl, tri_uvs);
+            }
+            self.window.swap_buffers().unwrap();
+
+            self.handle_scene_outcome(so);
         }
-        if let Some(uv_tris) = maybe_uv_tris {
-            self.rendererUV.present(&self.gl, uv_tris);
-        }
-        self.window.swap_buffers().unwrap();
     }
 
     pub fn destroy(&mut self) {

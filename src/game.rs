@@ -1,114 +1,65 @@
 use crate::level::*;
 use crate::application::*;
 use crate::renderer::*;
-use crate::rendererUV::*;
-use crate::rect::*;
 use crate::kmath::*;
 use crate::manifest::*;
+use crate::kgui::*;
+use crate::rendererUV::TriangleBufferUV;
 
 use std::collections::HashMap;
 
 use glutin::event::ElementState;
+use glutin::event::VirtualKeyCode;
 
-
-#[derive(Clone, Copy)]
-pub enum GameCommand {
-    Move((i32, i32)),
-
-    Undo,
-    Quit,
-}
 
 pub struct Game {
     pub level: Level,
+    pub place_tile: Tile,
+    pub place_idx: i32,
 }
 
 impl Game {
-    pub fn handle_command(&mut self, command: GameCommand) -> SceneOutcome {
-        match command {
-            GameCommand::Move(dir) => {
-                let new_pos = (self.level.player.0 + dir.0, self.level.player.1 + dir.1);
-                if self.level.alive && new_pos.0 >= 0 && new_pos.0 < self.level.w && new_pos.1 >= 0 && new_pos.1 < self.level.h {
-                    self.level.player = new_pos;
-                    self.level.tape_cursor = (self.level.tape_cursor + 1) % self.level.tape.len() as i32;
-                    match self.level.get_tile(new_pos.0, new_pos.1) {
-                        Tile::Colour(colour) => {
-                            if colour != self.level.tape[self.level.tape_cursor as usize] {
-                                self.level.alive = false;
-                            } else {
-                                if self.level.goal == self.level.player {
-                                    println!("winner!");
-                                    return SceneOutcome::Pop(SceneSignal::JustPop);
-                                }
-                            }
-                        },
-                        _ => {},
-                    }
-                    
-                }
-            },
-            GameCommand::Undo => {},
-            GameCommand::Quit => {return SceneOutcome::Pop(SceneSignal::JustPop)},
-        };
-        return SceneOutcome::None;
-    }
+
 }
 
 impl Scene for Game {
-    fn handle_event(&mut self, event: &glutin::event::Event<()>, screen_rect: Rect, cursor_pos: Vec2) -> SceneOutcome {
-        let mut key_cmd_schema = HashMap::new();
-        key_cmd_schema.insert(glutin::event::VirtualKeyCode::Escape, GameCommand::Quit);
-        key_cmd_schema.insert(glutin::event::VirtualKeyCode::W, GameCommand::Move((0, -1)));
-        key_cmd_schema.insert(glutin::event::VirtualKeyCode::S, GameCommand::Move((0, 1)));
-        key_cmd_schema.insert(glutin::event::VirtualKeyCode::A, GameCommand::Move((-1, 0)));
-        key_cmd_schema.insert(glutin::event::VirtualKeyCode::D, GameCommand::Move((1, 0)));
+    fn frame(&mut self, inputs: FrameInputState) -> (SceneOutcome, TriangleBuffer, Option<TriangleBufferUV>) {
+        let mut buf = TriangleBuffer::new(inputs.screen_rect);
+        let mut buf_uv = TriangleBufferUV::new(inputs.screen_rect, ATLAS_W, ATLAS_H);
+        
+        let click = inputs.events.iter().any(|e| match e {KEvent::MouseLeft(true) => true, _ => false});
+        let clickr = inputs.events.iter().any(|e| match e {KEvent::MouseRight(true) => true, _ => false});
 
-        let command = match event {
-            glutin::event::Event::WindowEvent {event: glutin::event::WindowEvent::KeyboardInput {
-                input: glutin::event::KeyboardInput { virtual_keycode: Some(virtual_code), state: ElementState::Pressed, ..}, ..}, ..} => 
-                {
-                    if let Some(cmd) = key_cmd_schema.get(virtual_code) {
-                         Some(cmd)
-                    } else {
-                        None
-                    }
-                },
-            _ => {None},
-        };
-
-        if let Some(command) = command {
-            self.handle_command(*command)
-        } else {
-            SceneOutcome::None
+        let (maybe_rollover_palette, maybe_rollover_grid) = self.level.frame(&mut buf, &mut buf_uv, inputs.screen_rect, &inputs, Some(self.place_idx));
+        if let Some(rollover_palette) = maybe_rollover_palette {
+            if click || inputs.held_lmb {
+                self.place_tile = self.level.tile_palette[rollover_palette as usize];
+                self.place_idx = rollover_palette;
+            }
         }
-    }
+        if let Some((x, y)) = maybe_rollover_grid {
+            if click || inputs.held_lmb {
+                if self.level.can_place(x, y, self.place_tile) && !self.level.get_locked(x, y) {
+                    self.level.set_tile(x, y, self.place_tile);
+                }
+            } else if (clickr || inputs.held_rmb) && !self.level.get_locked(x, y) {
+                self.level.clear_tile(x, y);
+            }
+        }
 
+        for event in inputs.events {
+            match event {
+                KEvent::Keyboard(VirtualKeyCode::Q, true) => self.place_tile = [self.place_tile[1], self.place_tile[2], self.place_tile[3], self.place_tile[0]],
+                KEvent::Keyboard(VirtualKeyCode::E, true) => self.place_tile = [self.place_tile[3], self.place_tile[0], self.place_tile[1], self.place_tile[2]],
+                KEvent::Keyboard(VirtualKeyCode::Escape, true) => {return (SceneOutcome::Pop(SceneSignal::JustPop), buf, None)},
+                _ => {},
+            }
+        }
+
+        (SceneOutcome::None, buf, Some(buf_uv))
+    }
+    
     fn handle_signal(&mut self, signal: SceneSignal) -> SceneOutcome {
         SceneOutcome::None
-    }
-
-    fn draw(&self, screen_rect: Rect) -> (Option<TriangleBuffer>, Option<TriangleBufferUV>) {
-        let mut buf = TriangleBuffer::new(screen_rect);
-
-        buf.draw_rect(screen_rect, Vec3::new(0.1, 0.1, 0.1), 0.9);
-
-
-        let mut bufUV = TriangleBufferUV::new(screen_rect, 20, 20);
-        let level_rect = screen_rect.child(0.0, 0.0, 1.0, 0.9).fit_center_square();
-
-        self.level.draw(&mut buf, &mut bufUV, level_rect);
-
-        let bot_rect = Rect::new(level_rect.x, level_rect.h, screen_rect.w - 2.0 * level_rect.x, 0.1 * screen_rect.h);
-        buf.draw_rect(bot_rect, Vec3::new(0.3, 0.3, 0.3), 2.0);
-        let n = self.level.tape.len();
-        for (i, sym) in self.level.tape.iter().enumerate() {
-            let sym_rect = bot_rect.grid_child(i as i32, 0, n as i32, 1).fit_center_square();
-            if i as i32 == self.level.tape_cursor {
-                buf.draw_rect(sym_rect.dilate(-0.01), Vec3::new(1.0, 1.0, 1.0), 3.0);
-            }
-            buf.draw_rect(sym_rect.dilate(-0.01).dilate(-0.01), COLOURS[*sym], 4.0);
-        }
-
-        (Some(buf), Some(bufUV))
     }
 }

@@ -1,5 +1,4 @@
 use crate::kmath::*;
-use crate::rect::*;
 use crate::kimg::*;
 
 use glow::*;
@@ -118,6 +117,10 @@ impl RendererUV {
             let texture = gl.create_texture().unwrap();
             gl.bind_texture(glow::TEXTURE_2D, Some(texture));
             gl.tex_image_2d(glow::TEXTURE_2D, 0, glow::RGBA as i32, image.w as i32, image.h as i32, 0, RGBA, glow::UNSIGNED_BYTE, Some(&image.bytes_transpose()));
+            gl.tex_parameter_i32(glow::TEXTURE_2D, glow::TEXTURE_MIN_FILTER, glow::NEAREST as i32);
+            gl.tex_parameter_i32(glow::TEXTURE_2D, glow::TEXTURE_MAG_FILTER, glow::NEAREST as i32);
+            gl.tex_parameter_i32(glow::TEXTURE_2D, glow::TEXTURE_WRAP_S, glow::CLAMP_TO_EDGE as i32);
+            gl.tex_parameter_i32(glow::TEXTURE_2D, glow::TEXTURE_WRAP_T, glow::CLAMP_TO_EDGE as i32);
             gl.generate_mipmap(glow::TEXTURE_2D);
 
             // We construct a buffer and upload the data

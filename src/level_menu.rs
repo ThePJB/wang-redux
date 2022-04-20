@@ -2,15 +2,17 @@ use crate::level::*;
 use crate::application::*;
 use crate::renderer::*;
 use crate::rendererUV::*;
-use crate::rect::*;
-use crate::kmath::*;
 use crate::manifest::*;
+use crate::kmath::*;
+use crate::kgui::*;
+use crate::rendererUV::TriangleBufferUV;
 
 use std::collections::HashMap;
 use std::fs::*;
 use std::io::Read;
 
 use glutin::event::ElementState;
+use glutin::event::VirtualKeyCode;
 
 
 #[derive(Clone, Copy)]
@@ -42,6 +44,7 @@ impl LevelMenu {
             }
         }
 
+        levels.sort_by_key(|lm| lm.level.complexity());
         println!("levels len: {}", levels.len());
 
         LevelMenu { selection: 0, levels, width: 4 }
@@ -63,43 +66,24 @@ impl LevelMenu {
 }
 
 impl Scene for LevelMenu {
-    fn handle_event(&mut self, event: &glutin::event::Event<()>, screen_rect: Rect, cursor_pos: Vec2) -> SceneOutcome {
-        let mut key_cmd_schema = HashMap::new();
-        key_cmd_schema.insert(glutin::event::VirtualKeyCode::Escape, MenuCommand::Quit);
-        key_cmd_schema.insert(glutin::event::VirtualKeyCode::Space, MenuCommand::Select);
-        key_cmd_schema.insert(glutin::event::VirtualKeyCode::Return, MenuCommand::Select);
-        key_cmd_schema.insert(glutin::event::VirtualKeyCode::W, MenuCommand::Move((0, -1)));
-        key_cmd_schema.insert(glutin::event::VirtualKeyCode::S, MenuCommand::Move((0, 1)));
-        key_cmd_schema.insert(glutin::event::VirtualKeyCode::A, MenuCommand::Move((-1, 0)));
-        key_cmd_schema.insert(glutin::event::VirtualKeyCode::D, MenuCommand::Move((1, 0)));
+    fn frame(&mut self, inputs: FrameInputState) -> (SceneOutcome, TriangleBuffer, Option<TriangleBufferUV>) {
+        let mut select = false;
 
-        let command = match event {
-            glutin::event::Event::WindowEvent {event: glutin::event::WindowEvent::KeyboardInput {
-                input: glutin::event::KeyboardInput { virtual_keycode: Some(virtual_code), state: ElementState::Pressed, ..}, ..}, ..} => 
-                {
-                    if let Some(cmd) = key_cmd_schema.get(virtual_code) {
-                         Some(cmd)
-                    } else {
-                        None
-                    }
-                },
+        let outcome = inputs.events.iter().filter_map(|e| match e {
+            KEvent::Keyboard(VirtualKeyCode::W, true) => Some(MenuCommand::Move((0, -1))),
+            KEvent::Keyboard(VirtualKeyCode::S, true) => Some(MenuCommand::Move((0, 1))),
+            KEvent::Keyboard(VirtualKeyCode::A, true) => Some(MenuCommand::Move((-1, 0))),
+            KEvent::Keyboard(VirtualKeyCode::D, true) => Some(MenuCommand::Move((1, 0))),
+            KEvent::Keyboard(VirtualKeyCode::Return, true) => Some(MenuCommand::Select),
+            KEvent::Keyboard(VirtualKeyCode::Escape, true) => Some(MenuCommand::Quit),
             _ => {None},
-        };
+        }).filter_map(|c| match self.handle_command(c) {
+            SceneOutcome::Pop(signal) => Some(SceneOutcome::Pop(signal)),
+            _ => None,
+        }).nth(0).unwrap_or(SceneOutcome::None);
 
-        if let Some(command) = command {
-            self.handle_command(*command)
-        } else {
-            SceneOutcome::None
-        }
-    }
-
-    fn handle_signal(&mut self, signal: SceneSignal) -> SceneOutcome {
-        SceneOutcome::None
-    }
-
-    fn draw(&self, screen_rect: Rect) -> (Option<TriangleBuffer>, Option<TriangleBufferUV>) {
-        let mut buf = TriangleBuffer::new(screen_rect);
-        let mut bufUV = TriangleBufferUV::new(screen_rect, 20, 20);
+        let mut buf = TriangleBuffer::new(inputs.screen_rect);
+        let mut buf_uv = TriangleBufferUV::new(inputs.screen_rect, ATLAS_W, ATLAS_H);
 
         let w = self.width;
         let h = 4;
@@ -107,16 +91,20 @@ impl Scene for LevelMenu {
         for j in 0..h {
             for i in 0..w {
                 let level_idx = i + j*w;
-                let level_rect = screen_rect.fit_center_square().grid_child(i, j, w, h);
+                let level_rect = inputs.screen_rect.fit_center_square().grid_child(i, j, w, h);
                 if level_idx == self.selection {
                     buf.draw_rect(level_rect, Vec3::new(1.0, 1.0, 1.0), 1.0);
                 }
                 if let Some(level) = self.levels.get(level_idx as usize) {
-                    level.level.draw(&mut buf, &mut bufUV, level_rect.dilate(-0.01));
+                    level.level.frame(&mut buf, &mut buf_uv, level_rect.dilate(-0.01), &inputs, None);
                 }
             }
         }
 
-        (Some(buf), Some(bufUV))
+        (outcome, buf, Some(buf_uv))
+    }
+    
+    fn handle_signal(&mut self, signal: SceneSignal) -> SceneOutcome {
+        SceneOutcome::None
     }
 }

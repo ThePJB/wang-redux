@@ -1,6 +1,5 @@
 use crate::kmath::*;
 use glow::*;
-use crate::rect::*;
 use std::fmt;
 
 pub struct TriangleBuffer {
@@ -29,22 +28,38 @@ impl TriangleBuffer {
     pub fn draw_rect(&mut self, r: Rect, colour: Vec3, depth: f32) {
         let v1 = Vert3 {
             pos: Vec3::new(r.x, r.y, depth),
-            colour: colour,
+            colour,
         };
         let v2 = Vert3 {
             pos: Vec3::new(r.x, r.y + r.h, depth),
-            colour: colour,
+            colour,
         };
         let v3 = Vert3 {
             pos: Vec3::new(r.x + r.w, r.y + r.h, depth),
-            colour: colour,
+            colour,
         };
         let v4 = Vert3 {
             pos: Vec3::new(r.x + r.w, r.y, depth),
-            colour: colour,
+            colour,
         };
         self.push_triangle(Triangle3{ a: v1, b: v4, c: v3 });
         self.push_triangle(Triangle3{ a: v1, b: v3, c: v2 });
+    }
+
+    pub fn draw_tri(&mut self, tri: Triangle, colour: Vec3, depth: f32) {
+        let a = Vert3 {
+            pos: Vec3::new(tri.a.x, tri.a.y, depth),
+            colour,
+        };
+        let b = Vert3 {
+            pos: Vec3::new(tri.b.x, tri.b.y, depth),
+            colour,
+        };
+        let c = Vert3 {
+            pos: Vec3::new(tri.c.x, tri.c.y, depth),
+            colour,
+        };
+        self.push_triangle(Triangle3 {a, b, c});
     }
 }
 
